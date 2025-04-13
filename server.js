@@ -4,9 +4,14 @@ const connectDB = require("./config/db");
 const path = require("path");
 const cors = require("cors");
 
-
 const app = express();
-app.use(cors()); // Enables CORS for all routes
+
+// Enable CORS for all origins explicitly
+app.use(cors({ origin: "*" }));
+
+// Alternatively, this shorter version also enables CORS for all origins:
+// app.use(cors());
+
 // Connect to MongoDB
 connectDB();
 

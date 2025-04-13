@@ -20,6 +20,13 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
+// Helper to generate full URL for a given relative file path
+const getFullUrl = (req, filePath) => {
+  const baseUrl = req.protocol + "://" + req.get("host");
+  // Remove possible leading '/' from filePath if necessary and return the URL
+  return `${baseUrl}/${filePath.replace(/^\/+/, "")}`;
+};
+
 // @route   GET /api/localmarketproduct
 // @desc    Get all local market products (public)
 // @access  Public
@@ -27,7 +34,20 @@ router.get("/", async (req, res) => {
   try {
     // Populate the category field if needed
     const products = await LocalMarketProduct.find().populate("category");
-    res.json(products);
+
+    // Optionally, update the image fields with the full URL before sending response
+    const updatedProducts = products.map((product) => {
+      if (product.image) {
+        product.image = getFullUrl(req, product.image);
+      }
+      if (product.multipleImages && product.multipleImages.length > 0) {
+        product.multipleImages = product.multipleImages.map((img) =>
+          getFullUrl(req, img)
+        );
+      }
+      return product;
+    });
+    res.json(updatedProducts);
   } catch (err) {
     console.error(err.message);
     res.status(500).send("Server error");
@@ -68,7 +88,7 @@ router.post(
       // Save single image from "image" field
       let imagePath = "";
       if (req.files && req.files.image && req.files.image.length > 0) {
-        imagePath = req.files.image[0].path;
+        imagePath = getFullUrl(req, req.files.image[0].path);
       }
 
       // Save multiple images from "multipleImages" field
@@ -78,7 +98,9 @@ router.post(
         req.files.multipleImages &&
         req.files.multipleImages.length > 0
       ) {
-        multipleImagesPaths = req.files.multipleImages.map((file) => file.path);
+        multipleImagesPaths = req.files.multipleImages.map((file) =>
+          getFullUrl(req, file.path)
+        );
       }
 
       const newProduct = new LocalMarketProduct({
@@ -136,9 +158,7 @@ router.put(
 
       // If a category is provided, validate that it exists.
       if (category) {
-        console.log(category);
         const categoryDoc = await Category.findById(category);
-        console.log(categoryDoc);
         if (!categoryDoc) {
           return res.status(400).json({ msg: "Invalid category provided" });
         }
@@ -160,11 +180,11 @@ router.put(
       // Handle file uploads if provided
       if (req.files) {
         if (req.files.image && req.files.image.length > 0) {
-          product.image = req.files.image[0].path;
+          product.image = getFullUrl(req, req.files.image[0].path);
         }
         if (req.files.multipleImages && req.files.multipleImages.length > 0) {
-          product.multipleImages = req.files.multipleImages.map(
-            (file) => file.path
+          product.multipleImages = req.files.multipleImages.map((file) =>
+            getFullUrl(req, file.path)
           );
         }
       }

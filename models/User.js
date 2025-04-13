@@ -8,10 +8,10 @@ const UserSchema = new mongoose.Schema(
       unique: true,
     },
     name: {
-      type: String, // Additional detail for new registrations
+      type: String,
     },
     address: {
-      type: String, // Additional detail for new registrations
+      type: String,
     },
     // The password field is optional in an OTP-based flow but kept here for possible future extension.
     password: {
@@ -35,5 +35,15 @@ const UserSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// Create a virtual property "id" that returns the string version of _id
+UserSchema.virtual("id").get(function () {
+  return this._id.toHexString();
+});
+
+// Ensure virtual fields are serialized to JSON.
+UserSchema.set("toJSON", {
+  virtuals: true,
+});
 
 module.exports = mongoose.model("User", UserSchema);

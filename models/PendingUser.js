@@ -8,4 +8,14 @@ const PendingUserSchema = new mongoose.Schema({
   otpExpires: { type: Date, required: true },
 });
 
+// Create a virtual property "id" that returns the string version of _id
+PendingUserSchema.virtual("id").get(function () {
+  return this._id.toHexString();
+});
+
+// Ensure virtual fields are serialized.
+PendingUserSchema.set("toJSON", {
+  virtuals: true,
+});
+
 module.exports = mongoose.model("PendingUser", PendingUserSchema);

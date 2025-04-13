@@ -10,7 +10,7 @@ const admin = require("../../middleware/admin");
 // Setup Multer storage configuration for file uploads
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, "uploads/"); // Make sure this directory exists
+    cb(null, "uploads/"); // Ensure this directory exists
   },
   filename: function (req, file, cb) {
     cb(null, Date.now() + "-" + file.originalname);
@@ -18,13 +18,15 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// Helper to generate full URL for a given relative file path
+// Helper to generate a full URL from a relative file path (normalizing backslashes)
 const getFullUrl = (req, filePath) => {
   const baseUrl = req.protocol + "://" + req.get("host");
-  return `${baseUrl}/${filePath.replace(/^\/+/, "")}`;
+  // Normalize any backslashes to forward slashes and remove extra leading slashes
+  const normalizedPath = filePath.replace(/\\/g, "/").replace(/^\/+/, "");
+  return `${baseUrl}/${normalizedPath}`;
 };
 
-// Helper to format the price (assumes price is stored as Number)
+// Helper to format the price (assumes price is stored as a Number)
 const formatPrice = (price) => {
   return (
     "₹" +
@@ -33,38 +35,35 @@ const formatPrice = (price) => {
 };
 
 // @route   GET /api/localmarketproduct
-// @desc    Get all local market products (public) with transformed response
+// @desc    Get all local market products with complete image URLs (public)
 // @access  Public
 router.get("/", async (req, res) => {
   try {
-    // Populate category field to get the category's name
+    // Populate category field to retrieve category details
     const products = await LocalMarketProduct.find().populate("category");
 
-    const transformedProducts = products.map((product) => {
-      return {
-        id: product._id,
-        name: product.name,
-        price: formatPrice(product.price),
-        description: product.description,
-        detailedDescription: product.detailedDescription,
-        origin: product.origin,
-        usageInstructions: product.usageInstructions,
-        careInstructions: product.careInstructions,
-        nutritionalInfo: product.nutritionalInfo,
-        image: product.image ? getFullUrl(req, product.image) : undefined,
-        // If you want to send multiple images as well, you may add this field:
-        multipleImages:
-          product.multipleImages && product.multipleImages.length > 0
-            ? product.multipleImages.map((img) => getFullUrl(req, img))
-            : undefined,
-        category:
-          product.category && product.category.name
-            ? product.category.name
-            : product.category,
-        rating: product.rating,
-        featured: product.featured,
-      };
-    });
+    const transformedProducts = products.map((product) => ({
+      id: product._id,
+      name: product.name,
+      price: formatPrice(product.price),
+      description: product.description,
+      detailedDescription: product.detailedDescription,
+      origin: product.origin,
+      usageInstructions: product.usageInstructions,
+      careInstructions: product.careInstructions,
+      nutritionalInfo: product.nutritionalInfo,
+      image: product.image ? getFullUrl(req, product.image) : undefined,
+      multipleImages:
+        product.multipleImages && product.multipleImages.length > 0
+          ? product.multipleImages.map((img) => getFullUrl(req, img))
+          : undefined,
+      category:
+        product.category && product.category.name
+          ? product.category.name
+          : product.category,
+      rating: product.rating,
+      featured: product.featured,
+    }));
 
     res.json(transformedProducts);
   } catch (err) {
@@ -74,7 +73,7 @@ router.get("/", async (req, res) => {
 });
 
 // @route   POST /api/localmarketproduct
-// @desc    Create a new local market product (admin only) with image uploads
+// @desc    Create a new local market product with image uploads (admin only)
 // @access  Private (admin)
 router.post(
   "/",
@@ -106,22 +105,20 @@ router.post(
         return res.status(400).json({ msg: "Invalid category provided" });
       }
 
-      // Save single image from "image" field
+      // Store the relative file path (do not prepend full URL here)
       let imagePath = "";
       if (req.files && req.files.image && req.files.image.length > 0) {
-        imagePath = getFullUrl(req, req.files.image[0].path);
+        imagePath = req.files.image[0].path;
       }
 
-      // Save multiple images from "multipleImages" field if needed
+      // Save relative paths for multiple images
       let multipleImagesPaths = [];
       if (
         req.files &&
         req.files.multipleImages &&
         req.files.multipleImages.length > 0
       ) {
-        multipleImagesPaths = req.files.multipleImages.map((file) =>
-          getFullUrl(req, file.path)
-        );
+        multipleImagesPaths = req.files.multipleImages.map((file) => file.path);
       }
 
       const newProduct = new LocalMarketProduct({
@@ -150,7 +147,7 @@ router.post(
 );
 
 // @route   PUT /api/localmarketproduct/:id
-// @desc    Update local market product details (admin only) with image uploads
+// @desc    Update a local market product with image uploads (admin only)
 // @access  Private (admin)
 router.put(
   "/:id",
@@ -190,7 +187,7 @@ router.put(
         product.category = category;
       }
 
-      // Update product fields with provided values or keep existing values
+      // Update product fields with new values if provided
       product.name = name || product.name;
       product.description = description || product.description;
       product.detailedDescription =
@@ -204,14 +201,14 @@ router.put(
       product.rating = rating || product.rating;
       product.featured = featured !== undefined ? featured : product.featured;
 
-      // Handle file uploads if provided
+      // Handle file uploads (store relative file paths)
       if (req.files) {
         if (req.files.image && req.files.image.length > 0) {
-          product.image = getFullUrl(req, req.files.image[0].path);
+          product.image = req.files.image[0].path;
         }
         if (req.files.multipleImages && req.files.multipleImages.length > 0) {
-          product.multipleImages = req.files.multipleImages.map((file) =>
-            getFullUrl(req, file.path)
+          product.multipleImages = req.files.multipleImages.map(
+            (file) => file.path
           );
         }
       }
@@ -226,7 +223,7 @@ router.put(
 );
 
 // @route   DELETE /api/localmarketproduct/:id
-// @desc    Delete local market product (admin only)
+// @desc    Delete a local market product (admin only)
 // @access  Private (admin)
 router.delete("/:id", auth, admin, async (req, res) => {
   try {

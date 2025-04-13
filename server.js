@@ -23,6 +23,8 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Define routes
 app.use("/api/auth", require("./routes/auth"));
+app.use("/api/categories", require("./routes/localmarket/category"));
+
 app.use("/api/localmarketproduct", require("./routes/localmarket/localMarket"));
 
 const PORT = process.env.PORT || 5000;

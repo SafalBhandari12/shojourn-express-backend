@@ -1,7 +1,7 @@
-// server.js
 require("dotenv").config();
 const express = require("express");
 const connectDB = require("./config/db");
+const path = require("path");
 
 const app = express();
 
@@ -10,6 +10,9 @@ connectDB();
 
 // Middleware to parse JSON requests
 app.use(express.json());
+
+// Serve static files from the uploads directory
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Define routes
 app.use("/api/auth", require("./routes/auth"));

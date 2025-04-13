@@ -7,6 +7,7 @@ const Category = require("../../models/Category");
 const auth = require("../../middleware/auth");
 const admin = require("../../middleware/admin");
 
+// Optionally include sub-routes (e.g., for category management) if needed
 router.use("/category", require("./category"));
 
 // Setup Multer storage configuration
@@ -23,7 +24,6 @@ const upload = multer({ storage });
 // Helper to generate full URL for a given relative file path
 const getFullUrl = (req, filePath) => {
   const baseUrl = req.protocol + "://" + req.get("host");
-  // Remove possible leading '/' from filePath if necessary and return the URL
   return `${baseUrl}/${filePath.replace(/^\/+/, "")}`;
 };
 
@@ -35,7 +35,7 @@ router.get("/", async (req, res) => {
     // Populate the category field if needed
     const products = await LocalMarketProduct.find().populate("category");
 
-    // Optionally, update the image fields with the full URL before sending response
+    // Update image fields with the full URL before sending response
     const updatedProducts = products.map((product) => {
       if (product.image) {
         product.image = getFullUrl(req, product.image);

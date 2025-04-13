@@ -8,19 +8,20 @@ const LocalMarketProductSchema = new mongoose.Schema(
     },
     description: String,
     detailedDescription: String,
-    // Note: While your sample price is "₹1,500", we expect a numeric price.
-    // Ensure you parse the price appropriately before saving.
+    // Store price as a Number (formatted on the API response)
     price: {
       type: Number,
       required: true,
     },
-    // Single image path
+    // Single image path (will be stored as a relative path)
     image: String,
-    // New field to store multiple image paths (e.g., from Multer)
+    // For multiple images (if applicable)
     multipleImages: [String],
     origin: String,
     usageInstructions: String,
-    // Now a reference to the Category model
+    careInstructions: String,
+    nutritionalInfo: String,
+    // Reference to the Category model
     category: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Category",

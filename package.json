@@ -2,10 +2,12 @@
   "name": "ecommerce-app",
   "version": "1.0.0",
   "description": "A professional Express based e-commerce website with mobile OTP login/register using Twilio.",
-  "main": "server.js",
+  "main": "dist/server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js"
+    "start": "node dist/server.js",
+    "dev": "nodemon -x ts-node server.ts",
+    "build": "tsc",
+    "watch": "tsc -w"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -22,6 +24,15 @@
     "twilio": "^4.13.0"
   },
   "devDependencies": {
-    "nodemon": "^3.1.9"
+    "@types/cors": "^2.8.18",
+    "@types/express": "^5.0.2",
+    "@types/jsonwebtoken": "^9.0.9",
+    "@types/mongoose": "^5.11.96",
+    "@types/multer": "^1.4.12",
+    "@types/node": "^22.15.19",
+    "@types/twilio": "^3.19.2",
+    "nodemon": "^3.1.10",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
   }
 }

@@ -3,16 +3,39 @@ import mongoose from "mongoose";
 
 const connectDB = async (): Promise<void> => {
   try {
-    await mongoose.connect(process.env.MONGO_URI as string, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-      writeConcern: {
-        w: "majority",
-        j: true,
-        wtimeout: 1000,
-      },
-    } as any);
-    console.log("✅ MongoDB connected");
+    const mongoURI = process.env.MONGO_URI;
+    if (!mongoURI) {
+      throw new Error("MONGO_URI is not defined in environment variables");
+    }
+
+    await mongoose.connect(mongoURI, {
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+    });
+
+    mongoose.connection.on("connected", () => {
+      console.log("✅ MongoDB connected");
+    });
+
+    mongoose.connection.on("error", (err) => {
+      console.error("❌ MongoDB connection error:", err);
+    });
+
+    mongoose.connection.on("disconnected", () => {
+      console.log("⚠️ MongoDB disconnected");
+    });
+
+    // Handle application termination
+    process.on("SIGINT", async () => {
+      try {
+        await mongoose.connection.close();
+        console.log("MongoDB connection closed through app termination");
+        process.exit(0);
+      } catch (err) {
+        console.error("Error during MongoDB disconnection:", err);
+        process.exit(1);
+      }
+    });
   } catch (err: any) {
     console.error("❌ MongoDB connection error:", err.message);
     process.exit(1);

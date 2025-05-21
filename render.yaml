@@ -3,8 +3,9 @@ services:
     name: sojourn-backend
     env: node
     buildCommand: |
-      npm install
+      npm install --production=false
       npm install -g rimraf
+      npm install --save-dev @types/jsonwebtoken @types/bcryptjs @types/cors @types/compression
       npm run build
     startCommand: npm start
     envVars:

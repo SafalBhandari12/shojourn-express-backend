@@ -6,6 +6,7 @@ import path from "path";
 import cors from "cors";
 import helmet from "helmet";
 import compression from "compression";
+import fs from "fs";
 
 dotenv.config();
 
@@ -14,16 +15,34 @@ connectDB();
 
 const app = express();
 
+// Create uploads directory if it doesn't exist
+const uploadsDir = path.join(__dirname, "uploads");
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
 // Middleware
 app.use(helmet()); // Security headers
 app.use(compression()); // Compress responses
-app.use(cors({ origin: "*" }));
+app.use(
+  cors({
+    origin:
+      process.env.NODE_ENV === "production"
+        ? process.env.ALLOWED_ORIGINS?.split(",") || []
+        : "*",
+    credentials: true,
+  })
+);
 app.use(express.json({ limit: "10mb" })); // Limit JSON payload size
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Health check endpoint
 app.get("/api/health", (req: Request, res: Response) => {
-  res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
+  res.status(200).json({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || "development",
+  });
 });
 
 // Routes
@@ -48,12 +67,23 @@ app.use("/api/images", (req: Request, res: Response, next: NextFunction) => {
 // Error handling middleware
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   console.error(err.stack);
-  res.status(500).json({ error: "Internal server error" });
+  const statusCode = (err as any).statusCode || 500;
+  const message =
+    process.env.NODE_ENV === "production"
+      ? "Internal server error"
+      : err.message;
+  res.status(statusCode).json({
+    error: message,
+    ...(process.env.NODE_ENV !== "production" && { stack: err.stack }),
+  });
 });
 
 // 404 handler
 app.use((req: Request, res: Response) => {
-  res.status(404).json({ error: "Route not found" });
+  res.status(404).json({
+    error: "Route not found",
+    path: req.path,
+  });
 });
 
 const PORT = process.env.PORT || 5000;

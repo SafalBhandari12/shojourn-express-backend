@@ -26,6 +26,13 @@ interface OrderRequestBody {
   status?: OrderStatus;
 }
 
+interface OrderItemType {
+  product: mongoose.Types.ObjectId;
+  quantity: number;
+  price: number;
+  vendor: mongoose.Types.ObjectId;
+}
+
 // Helper function to type check middleware
 const withAuth = (handler: RequestHandler): RequestHandler => {
   return async (req: RequestWithFiles, res: Response, next: NextFunction) => {
@@ -60,7 +67,7 @@ router.post(
 
       // Calculate total amount and validate products
       let totalAmount = 0;
-      const orderItems = [];
+      const orderItems: OrderItemType[] = [];
 
       for (const item of items) {
         const product = await LocalMarketProduct.findById(item.productId);
@@ -89,10 +96,10 @@ router.post(
         }
 
         orderItems.push({
-          product: product._id,
+          product: new mongoose.Types.ObjectId(product._id),
           quantity: item.quantity,
-          price: product.price,
-          vendor: product.vendor,
+          price: finalPrice,
+          vendor: new mongoose.Types.ObjectId(product.vendor),
         });
 
         totalAmount += finalPrice * item.quantity;

@@ -6,11 +6,9 @@
   "scripts": {
     "start": "node --max-old-space-size=512 dist/server.js",
     "dev": "nodemon -x ts-node server.ts",
-    "build": "tsc",
+    "build": "rm -rf dist && tsc",
     "watch": "tsc -w",
-    "build-and-start": "npm run build && npm start",
-    "clean": "rimraf dist",
-    "prebuild": "npm run clean"
+    "build-and-start": "npm run build && npm start"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -40,7 +38,6 @@
     "@types/react": "~19.0.10",
     "@types/twilio": "^3.19.2",
     "nodemon": "^3.1.10",
-    "rimraf": "^5.0.5",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3"
   }

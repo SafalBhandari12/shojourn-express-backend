@@ -9,6 +9,9 @@ export interface IUser extends Document {
   password: string;
   role: "user" | "vendor" | "admin";
   isVerified: boolean;
+  otp?: string;
+  otpExpires?: Date;
+  address?: string;
   comparePassword(candidatePassword: string): Promise<boolean>;
   generateAuthToken(): string;
 }
@@ -24,6 +27,9 @@ const UserSchema = new Schema<IUser>(
       default: "user",
     },
     isVerified: { type: Boolean, default: false },
+    otp: { type: String },
+    otpExpires: { type: Date },
+    address: { type: String },
   },
   { timestamps: true }
 );

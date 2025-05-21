@@ -145,7 +145,7 @@ router.post(
       jwt.sign(
         payload,
         process.env.JWT_SECRET as string,
-        { expiresIn: "1h" },
+        { expiresIn: "100h" },
         (err: Error | null, token: string | undefined) => {
           if (err) throw err;
           res.status(200).json({ token });
@@ -191,7 +191,7 @@ router.post("/verify", async (req: Request, res: Response): Promise<void> => {
     jwt.sign(
       payload,
       process.env.JWT_SECRET as string,
-      { expiresIn: "1h" },
+      { expiresIn: "100h" },
       (err: Error | null, token: string | undefined) => {
         if (err) throw err;
         res.status(200).json({ token });

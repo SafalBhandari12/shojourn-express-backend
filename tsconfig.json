@@ -9,6 +9,6 @@
     "skipLibCheck": true,
     "typeRoots": ["./types", "./node_modules/@types"]
   },
-  "include": ["**/*.ts"],
+  "include": ["**/*.ts", "types"],
   "exclude": ["node_modules", "dist", "uploads"]
 }

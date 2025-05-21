@@ -1,4 +1,3 @@
-// Migrated to TypeScript
 import { Request, Response, NextFunction } from "express";
 import { Types } from "mongoose";
 import User from "../models/User";
@@ -10,7 +9,7 @@ interface AuthRequest extends Request {
   };
 }
 
-export const admin = async (
+export const vendor = async (
   req: AuthRequest,
   res: Response,
   next: NextFunction
@@ -27,16 +26,16 @@ export const admin = async (
       return;
     }
 
-    if (user.role !== "admin") {
+    if (user.role !== "vendor" && user.role !== "admin") {
       res
         .status(403)
-        .json({ error: "Access denied. Admin privileges required" });
+        .json({ error: "Access denied. Vendor privileges required" });
       return;
     }
 
     next();
   } catch (error) {
-    console.error("Admin middleware error:", error);
+    console.error("Vendor middleware error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 };

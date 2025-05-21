@@ -1,35 +1,56 @@
 // Migrated to TypeScript
-import { Router, Request, Response, RequestHandler } from "express";
-import multer from "multer";
+import {
+  Router,
+  Request,
+  Response,
+  RequestHandler,
+  NextFunction,
+} from "express";
+import multer, { StorageEngine } from "multer";
+import { GridFSBucket, ObjectId } from "mongodb";
+import { GridFsStorage } from "multer-gridfs-storage";
+import mongoose, { Types } from "mongoose";
+import crypto from "crypto";
+import path from "path";
 import LocalMarketProduct, {
   ILocalMarketProduct,
 } from "../../models/LocalMarketProduct";
 import Category from "../../models/Category";
-import auth from "../../middleware/auth";
-import admin from "../../middleware/admin";
-import { Types } from "mongoose";
+import { auth } from "../../middleware/auth";
+import { admin } from "../../middleware/admin";
+import { vendor } from "../../middleware/vendor";
+import { RequestWithFiles } from "../../types/express";
 
 const router = Router();
 
-// Extend Express Request for multer
-interface RequestWithFiles extends Request {
-  files?: {
-    [fieldname: string]: Express.Multer.File[];
-  };
-  body: {
-    name: string;
-    description?: string;
-    detailedDescription?: string;
-    price: string;
-    origin?: string;
-    usageInstructions?: string;
-    careInstructions?: string;
-    nutritionalInfo?: string;
-    category?: string;
-    rating?: string;
-    featured?: string;
-  };
-}
+let gfs: GridFSBucket;
+
+// Initialize GridFS
+mongoose.connection.once("open", () => {
+  gfs = new GridFSBucket(mongoose.connection.db, {
+    bucketName: "uploads",
+  });
+});
+
+// Create storage engine for GridFS
+const storage: StorageEngine = new GridFsStorage({
+  url: process.env.MONGO_URI as string,
+  options: { useNewUrlParser: true, useUnifiedTopology: true },
+  file: (req: Express.Request, file: Express.Multer.File) => {
+    return new Promise((resolve) => {
+      crypto.randomBytes(16, (err, buf) => {
+        const filename = buf.toString("hex") + path.extname(file.originalname);
+        const fileInfo = {
+          filename: filename,
+          bucketName: "uploads",
+        };
+        resolve(fileInfo);
+      });
+    });
+  },
+}) as unknown as StorageEngine;
+
+const upload = multer({ storage });
 
 // Define transformed product type for response
 interface TransformedProduct {
@@ -47,48 +68,17 @@ interface TransformedProduct {
   category?: string;
   rating?: number;
   featured?: boolean;
+  stock: number;
+  discount?: {
+    percentage: number;
+    validUntil: Date;
+  };
 }
-
-// Define request body type for product operations
-interface ProductRequestBody {
-  name: string;
-  description?: string;
-  detailedDescription?: string;
-  price: string;
-  origin?: string;
-  usageInstructions?: string;
-  careInstructions?: string;
-  nutritionalInfo?: string;
-  category?: string;
-  rating?: string;
-  featured?: string;
-}
-
-// Setup Multer storage configuration
-const storage = multer.diskStorage({
-  destination: (
-    _req: Request,
-    _file: Express.Multer.File,
-    cb: (error: Error | null, destination: string) => void
-  ) => {
-    cb(null, "uploads/");
-  },
-  filename: (
-    _req: Request,
-    file: Express.Multer.File,
-    cb: (error: Error | null, filename: string) => void
-  ) => {
-    cb(null, Date.now() + "-" + file.originalname);
-  },
-});
-
-const upload = multer({ storage });
 
 // Helper functions
-const getFullUrl = (req: Request, filePath: string): string => {
+const getFullUrl = (req: Request, filename: string): string => {
   const baseUrl = req.protocol + "://" + req.get("host");
-  const normalizedPath = filePath.replace(/\\/g, "/").replace(/^\/+/, "");
-  return `${baseUrl}/${normalizedPath}`;
+  return `${baseUrl}/api/images/${filename}`;
 };
 
 const formatPrice = (price: number): string => {
@@ -98,10 +88,12 @@ const formatPrice = (price: number): string => {
   );
 };
 
-// GET all products
+// GET all products (public)
 router.get("/", async (req: Request, res: Response): Promise<void> => {
   try {
-    const products = await LocalMarketProduct.find().populate("category");
+    const products = await LocalMarketProduct.find({ isActive: true }).populate(
+      "category"
+    );
 
     const transformedProducts: TransformedProduct[] = products.map(
       (product: ILocalMarketProduct & { category?: any }) => ({
@@ -122,6 +114,13 @@ router.get("/", async (req: Request, res: Response): Promise<void> => {
         category: product.category?.name || product.category,
         rating: product.rating,
         featured: product.featured,
+        stock: product.stock,
+        discount: product.discount.isActive
+          ? {
+              percentage: product.discount.percentage,
+              validUntil: product.discount.validUntil,
+            }
+          : undefined,
       })
     );
 
@@ -132,18 +131,28 @@ router.get("/", async (req: Request, res: Response): Promise<void> => {
   }
 });
 
-// POST new product
+// Helper function to type check middleware
+const withAuth = (handler: RequestHandler): RequestHandler => {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      res.status(401).json({ msg: "Not authenticated" });
+      return;
+    }
+    return handler(req, res, next);
+  };
+};
+
+// POST new product (vendor only)
 router.post(
   "/",
-  auth,
-  admin,
+  auth as RequestHandler,
+  vendor as RequestHandler,
   upload.fields([
     { name: "image", maxCount: 1 },
     { name: "multipleImages", maxCount: 5 },
   ]),
-  (async (req: RequestWithFiles, res: Response) => {
+  withAuth(async (req: RequestWithFiles, res: Response) => {
     try {
-      const reqWithFiles = req as RequestWithFiles;
       const {
         name,
         description,
@@ -154,12 +163,12 @@ router.post(
         careInstructions,
         nutritionalInfo,
         category,
-        rating,
-        featured,
-      } = reqWithFiles.body;
+        stock,
+        discount,
+      } = req.body;
 
-      if (!name || !price) {
-        res.status(400).json({ msg: "Name and price are required" });
+      if (!name || !price || !stock) {
+        res.status(400).json({ msg: "Name, price, and stock are required" });
         return;
       }
 
@@ -172,18 +181,15 @@ router.post(
       }
 
       let imagePath = "";
-      if (
-        reqWithFiles.files &&
-        reqWithFiles.files["image"] &&
-        reqWithFiles.files["image"][0]
-      ) {
-        imagePath = reqWithFiles.files["image"][0].path;
+      const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+      if (files && "image" in files && files["image"][0]) {
+        imagePath = files["image"][0].filename;
       }
 
       let multipleImagesPaths: string[] = [];
-      if (reqWithFiles.files && reqWithFiles.files["multipleImages"]) {
-        multipleImagesPaths = reqWithFiles.files["multipleImages"].map(
-          (file) => file.path
+      if (files && "multipleImages" in files) {
+        multipleImagesPaths = files["multipleImages"].map(
+          (file: Express.Multer.File) => file.filename
         );
       }
 
@@ -198,9 +204,17 @@ router.post(
         usageInstructions,
         careInstructions,
         nutritionalInfo,
-        category: category ? new Types.ObjectId(category) : undefined,
-        rating: rating ? Number(rating) : undefined,
-        featured: featured === "true",
+        category: category ? new mongoose.Types.ObjectId(category) : undefined,
+        vendor: req.user?.id,
+        stock: Number(stock),
+        discount: discount
+          ? {
+              percentage: Number(discount.percentage),
+              validFrom: new Date(discount.validFrom),
+              validUntil: new Date(discount.validUntil),
+              isActive: true,
+            }
+          : undefined,
       });
 
       const savedProduct = await newProduct.save();
@@ -209,24 +223,38 @@ router.post(
       console.error(err.message);
       res.status(500).send("Server error");
     }
-  }) as RequestHandler
+  })
 );
 
-// PUT update product
+// PUT update product (vendor only)
 router.put(
   "/:id",
-  auth,
-  admin,
+  auth as RequestHandler,
+  vendor as RequestHandler,
   upload.fields([
     { name: "image", maxCount: 1 },
     { name: "multipleImages", maxCount: 5 },
   ]),
-  (async (req: RequestWithFiles, res: Response) => {
+  withAuth(async (req: Request, res: Response) => {
     try {
-      const reqWithFiles = req as RequestWithFiles;
+      if (!req.user) {
+        res.status(401).json({ msg: "Not authenticated" });
+        return;
+      }
+
       const product = await LocalMarketProduct.findById(req.params.id);
+
       if (!product) {
         res.status(404).json({ msg: "Product not found" });
+        return;
+      }
+
+      // Check if user is the vendor of this product
+      if (
+        product.vendor.toString() !== req.user.id.toString() &&
+        req.user.role !== "admin"
+      ) {
+        res.status(403).json({ msg: "Not authorized to update this product" });
         return;
       }
 
@@ -240,9 +268,9 @@ router.put(
         careInstructions,
         nutritionalInfo,
         category,
-        rating,
-        featured,
-      } = reqWithFiles.body;
+        stock,
+        discount,
+      } = req.body;
 
       if (category) {
         const categoryDoc = await Category.findById(category);
@@ -265,16 +293,38 @@ router.put(
         product.careInstructions = careInstructions;
       if (nutritionalInfo !== undefined)
         product.nutritionalInfo = nutritionalInfo;
-      if (rating !== undefined) product.rating = Number(rating);
-      if (featured !== undefined) product.featured = featured === "true";
+      if (stock !== undefined) product.stock = Number(stock);
 
-      if (reqWithFiles.files) {
-        if (reqWithFiles.files["image"] && reqWithFiles.files["image"][0]) {
-          product.image = reqWithFiles.files["image"][0].path;
+      if (discount) {
+        product.discount = {
+          percentage: Number(discount.percentage),
+          validFrom: new Date(discount.validFrom),
+          validUntil: new Date(discount.validUntil),
+          isActive: true,
+        };
+      }
+
+      if (req.files) {
+        if ("image" in req.files && req.files["image"][0]) {
+          if (product.image) {
+            const file = await gfs.find({ filename: product.image }).toArray();
+            if (file.length > 0) {
+              await gfs.delete(file[0]._id);
+            }
+          }
+          product.image = req.files["image"][0].filename;
         }
-        if (reqWithFiles.files["multipleImages"]) {
-          product.multipleImages = reqWithFiles.files["multipleImages"].map(
-            (file) => file.path
+        if ("multipleImages" in req.files) {
+          if (product.multipleImages && product.multipleImages.length > 0) {
+            for (const filename of product.multipleImages) {
+              const file = await gfs.find({ filename }).toArray();
+              if (file.length > 0) {
+                await gfs.delete(file[0]._id);
+              }
+            }
+          }
+          product.multipleImages = req.files["multipleImages"].map(
+            (file: Express.Multer.File) => file.filename
           );
         }
       }
@@ -285,23 +335,195 @@ router.put(
       console.error(err.message);
       res.status(500).send("Server error");
     }
-  }) as RequestHandler
+  })
 );
 
-// DELETE product
+// DELETE product (vendor or admin)
 router.delete(
   "/:id",
-  auth,
-  admin,
-  async (req: Request, res: Response): Promise<void> => {
+  auth as RequestHandler,
+  vendor as RequestHandler,
+  async (req: RequestWithFiles, res: Response): Promise<void> => {
     try {
+      if (!req.user) {
+        res.status(401).json({ msg: "Not authenticated" });
+        return;
+      }
+
       const product = await LocalMarketProduct.findById(req.params.id);
       if (!product) {
         res.status(404).json({ msg: "Product not found" });
         return;
       }
+
+      // Check if user is the vendor of this product or admin
+      if (
+        product.vendor.toString() !== req.user.id.toString() &&
+        req.user.role !== "admin"
+      ) {
+        res.status(403).json({ msg: "Not authorized to delete this product" });
+        return;
+      }
+
+      // Delete associated images from GridFS
+      if (product.image) {
+        const file = await gfs.find({ filename: product.image }).toArray();
+        if (file.length > 0) {
+          await gfs.delete(file[0]._id);
+        }
+      }
+
+      if (product.multipleImages && product.multipleImages.length > 0) {
+        for (const filename of product.multipleImages) {
+          const file = await gfs.find({ filename }).toArray();
+          if (file.length > 0) {
+            await gfs.delete(file[0]._id);
+          }
+        }
+      }
+
       await product.deleteOne();
-      res.json({ msg: "Product removed" });
+      res.json({ msg: "Product and associated images removed" });
+    } catch (err: any) {
+      console.error(err.message);
+      res.status(500).send("Server error");
+    }
+  }
+);
+
+// GET image
+router.get(
+  "/image/:filename",
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const file = await gfs.find({ filename: req.params.filename }).toArray();
+      if (!file || file.length === 0) {
+        res.status(404).json({ msg: "No file exists" });
+        return;
+      }
+
+      const downloadStream = gfs.openDownloadStreamByName(req.params.filename);
+      downloadStream.pipe(res);
+    } catch (err: any) {
+      console.error(err.message);
+      res.status(500).send("Server error");
+    }
+  }
+);
+
+// DELETE an image (vendor or admin)
+router.delete(
+  "/image/:filename",
+  auth as RequestHandler,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      if (!req.user) {
+        res.status(401).json({ msg: "Not authenticated" });
+        return;
+      }
+
+      const file = await gfs.find({ filename: req.params.filename }).toArray();
+      if (!file || file.length === 0) {
+        res.status(404).json({ msg: "No file exists" });
+        return;
+      }
+
+      // Check if user is admin
+      if (req.user.role === "admin") {
+        await gfs.delete(file[0]._id);
+        res.json({ msg: "File deleted" });
+        return;
+      }
+
+      // For vendors, check if the image belongs to their product
+      const product = await LocalMarketProduct.findOne({
+        $or: [
+          { image: req.params.filename },
+          { multipleImages: req.params.filename },
+        ],
+      });
+
+      if (!product) {
+        res.status(404).json({ msg: "Image not associated with any product" });
+        return;
+      }
+
+      if (product.vendor.toString() !== req.user.id) {
+        res.status(403).json({ msg: "Not authorized to delete this image" });
+        return;
+      }
+
+      await gfs.delete(file[0]._id);
+      res.json({ msg: "File deleted" });
+    } catch (err: any) {
+      console.error(err.message);
+      res.status(500).send("Server error");
+    }
+  }
+);
+
+// Get vendor's products
+router.get(
+  "/vendor/products",
+  auth as RequestHandler,
+  vendor as RequestHandler,
+  async (req: RequestWithFiles, res: Response): Promise<void> => {
+    try {
+      if (!req.user) {
+        res.status(401).json({ msg: "Not authenticated" });
+        return;
+      }
+
+      const products = await LocalMarketProduct.find({
+        vendor: req.user.id,
+      }).populate("category");
+      res.json(products);
+    } catch (err: any) {
+      console.error(err.message);
+      res.status(500).send("Server error");
+    }
+  }
+);
+
+// Update product discount (vendor only)
+router.patch(
+  "/:id/discount",
+  auth as RequestHandler,
+  vendor as RequestHandler,
+  async (req: RequestWithFiles, res: Response): Promise<void> => {
+    try {
+      if (!req.user) {
+        res.status(401).json({ msg: "Not authenticated" });
+        return;
+      }
+
+      const { percentage, validFrom, validUntil } = req.body as {
+        percentage: string;
+        validFrom: string;
+        validUntil: string;
+      };
+
+      const product = await LocalMarketProduct.findById(req.params.id);
+
+      if (!product) {
+        res.status(404).json({ msg: "Product not found" });
+        return;
+      }
+
+      if (product.vendor.toString() !== req.user.id.toString()) {
+        res.status(403).json({ msg: "Not authorized to update this product" });
+        return;
+      }
+
+      product.discount = {
+        percentage: Number(percentage),
+        validFrom: new Date(validFrom),
+        validUntil: new Date(validUntil),
+        isActive: true,
+      };
+
+      await product.save();
+      res.json(product);
     } catch (err: any) {
       console.error(err.message);
       res.status(500).send("Server error");

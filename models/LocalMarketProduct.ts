@@ -15,6 +15,15 @@ export interface ILocalMarketProduct extends Document {
   category?: Types.ObjectId;
   rating?: number;
   featured?: boolean;
+  vendor: Types.ObjectId;
+  stock: number;
+  discount: {
+    percentage: number;
+    validFrom: Date;
+    validUntil: Date;
+    isActive: boolean;
+  };
+  isActive: boolean;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -32,8 +41,44 @@ const LocalMarketProductSchema = new Schema<ILocalMarketProduct>(
     careInstructions: String,
     nutritionalInfo: String,
     category: { type: Schema.Types.ObjectId, ref: "Category" },
-    rating: Number,
-    featured: Boolean,
+    rating: {
+      type: Number,
+      min: 0,
+      max: 5,
+    },
+    featured: {
+      type: Boolean,
+      default: false,
+    },
+    vendor: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    stock: {
+      type: Number,
+      required: true,
+      min: 0,
+      default: 0,
+    },
+    discount: {
+      percentage: {
+        type: Number,
+        min: 0,
+        max: 100,
+        default: 0,
+      },
+      validFrom: Date,
+      validUntil: Date,
+      isActive: {
+        type: Boolean,
+        default: false,
+      },
+    },
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
   },
   { timestamps: true }
 );

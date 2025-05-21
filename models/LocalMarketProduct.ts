@@ -3,7 +3,7 @@ import mongoose, { Document, Schema, Types } from "mongoose";
 
 export interface ILocalMarketProduct extends Document {
   name: string;
-  description?: string;
+  description: string;
   detailedDescription?: string;
   price: number;
   image?: string;
@@ -12,17 +12,18 @@ export interface ILocalMarketProduct extends Document {
   usageInstructions?: string;
   careInstructions?: string;
   nutritionalInfo?: string;
-  category?: Types.ObjectId;
+  category: mongoose.Types.ObjectId;
   rating?: number;
   featured?: boolean;
-  vendor: Types.ObjectId;
+  vendor: mongoose.Types.ObjectId;
   stock: number;
   discount: {
+    isActive: boolean;
     percentage: number;
     validFrom: Date;
     validUntil: Date;
-    isActive: boolean;
   };
+  images: string[];
   isActive: boolean;
   createdAt?: Date;
   updatedAt?: Date;
@@ -31,16 +32,20 @@ export interface ILocalMarketProduct extends Document {
 const LocalMarketProductSchema = new Schema<ILocalMarketProduct>(
   {
     name: { type: String, required: true },
-    description: String,
+    description: { type: String, required: true },
     detailedDescription: String,
-    price: { type: Number, required: true },
+    price: { type: Number, required: true, min: 0 },
     image: String,
     multipleImages: [String],
     origin: String,
     usageInstructions: String,
     careInstructions: String,
     nutritionalInfo: String,
-    category: { type: Schema.Types.ObjectId, ref: "Category" },
+    category: {
+      type: Schema.Types.ObjectId,
+      ref: "Category",
+      required: true,
+    },
     rating: {
       type: Number,
       min: 0,
@@ -55,26 +60,14 @@ const LocalMarketProductSchema = new Schema<ILocalMarketProduct>(
       ref: "User",
       required: true,
     },
-    stock: {
-      type: Number,
-      required: true,
-      min: 0,
-      default: 0,
-    },
+    stock: { type: Number, required: true, min: 0 },
     discount: {
-      percentage: {
-        type: Number,
-        min: 0,
-        max: 100,
-        default: 0,
-      },
-      validFrom: Date,
-      validUntil: Date,
-      isActive: {
-        type: Boolean,
-        default: false,
-      },
+      isActive: { type: Boolean, default: false },
+      percentage: { type: Number, min: 0, max: 100, default: 0 },
+      validFrom: { type: Date },
+      validUntil: { type: Date },
     },
+    images: [{ type: String }],
     isActive: {
       type: Boolean,
       default: true,
@@ -82,6 +75,12 @@ const LocalMarketProductSchema = new Schema<ILocalMarketProduct>(
   },
   { timestamps: true }
 );
+
+// Create indexes
+LocalMarketProductSchema.index({ name: 1 });
+LocalMarketProductSchema.index({ category: 1 });
+LocalMarketProductSchema.index({ vendor: 1 });
+LocalMarketProductSchema.index({ "discount.isActive": 1 });
 
 LocalMarketProductSchema.virtual("id").get(function (
   this: ILocalMarketProduct

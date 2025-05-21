@@ -4,55 +4,43 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
 export interface IUser extends Document {
+  name: string;
   mobile: string;
-  name?: string;
-  address?: string;
-  password?: string;
+  password: string;
+  role: "user" | "vendor" | "admin";
   isVerified: boolean;
-  otp?: string;
-  otpExpires?: Date;
-  role: "client" | "vendor" | "admin";
-  createdAt?: Date;
-  updatedAt?: Date;
   comparePassword(candidatePassword: string): Promise<boolean>;
   generateAuthToken(): string;
 }
 
 const UserSchema = new Schema<IUser>(
   {
+    name: { type: String, required: true },
     mobile: { type: String, required: true, unique: true },
-    name: { type: String },
-    address: { type: String },
-    password: { type: String },
-    isVerified: { type: Boolean, default: false },
-    otp: { type: String },
-    otpExpires: { type: Date },
+    password: { type: String, required: true },
     role: {
       type: String,
-      enum: ["client", "vendor", "admin"],
-      default: "client",
+      enum: ["user", "vendor", "admin"],
+      default: "user",
     },
+    isVerified: { type: Boolean, default: false },
   },
   { timestamps: true }
 );
 
-UserSchema.virtual("id").get(function (this: IUser) {
-  return this._id.toHexString();
-});
-
-UserSchema.set("toJSON", { virtuals: true });
+// Create indexes
+UserSchema.index({ mobile: 1 }, { unique: true });
 
 // Hash password before saving
 UserSchema.pre("save", async function (next) {
-  if (!this.isModified("password") || !this.password) return next();
+  if (!this.isModified("password")) return next();
 
   try {
     const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(this.password, salt);
-    this.password = hashedPassword;
+    this.password = await bcrypt.hash(this.password, salt);
     next();
-  } catch (err) {
-    next(err as Error);
+  } catch (error) {
+    next(error as Error);
   }
 });
 
@@ -60,19 +48,15 @@ UserSchema.pre("save", async function (next) {
 UserSchema.methods.comparePassword = async function (
   candidatePassword: string
 ): Promise<boolean> {
-  if (!this.password) return false;
   return bcrypt.compare(candidatePassword, this.password);
 };
 
 // Generate JWT token
 UserSchema.methods.generateAuthToken = function (): string {
-  if (!process.env.JWT_SECRET) {
-    throw new Error("JWT_SECRET is not defined");
-  }
   return jwt.sign(
-    { user: { id: this._id, role: this.role } },
-    process.env.JWT_SECRET,
-    { expiresIn: "24h" }
+    { id: this._id, role: this.role },
+    process.env.JWT_SECRET || "your-secret-key",
+    { expiresIn: "7d" }
   );
 };
 

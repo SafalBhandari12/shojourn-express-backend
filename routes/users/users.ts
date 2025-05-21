@@ -1,47 +1,31 @@
-import {
-  Router,
-  Request,
-  Response,
-  RequestHandler,
-  NextFunction,
-} from "express";
+import { Router, Request, Response, NextFunction } from "express";
 import mongoose from "mongoose";
-import User from "../../models/User";
+import User, { IUser } from "../../models/User";
 import { auth } from "../../middleware/auth";
 import { admin } from "../../middleware/admin";
+import { RequestWithFiles } from "../../types/express";
 
 const router = Router();
 
 interface UserRequestBody {
-  role?: "client" | "vendor" | "admin";
+  role?: "user" | "vendor" | "admin";
 }
-
-// Helper function to type check middleware
-const withAuth = (handler: RequestHandler): RequestHandler => {
-  return async (req: Request, res: Response, next: NextFunction) => {
-    if (!req.user) {
-      res.status(401).json({ msg: "Not authenticated" });
-      return;
-    }
-    return handler(req, res, next);
-  };
-};
 
 // Get current user's information
 router.get(
   "/me",
-  auth as RequestHandler,
-  async (req: Request, res: Response) => {
+  auth,
+  async (req: RequestWithFiles, res: Response): Promise<void> => {
     try {
       const user = await User.findById(req.user?.id).select("-password");
       if (!user) {
-        res.status(404).json({ msg: "User not found" });
+        res.status(404).json({ error: "User not found" });
         return;
       }
       res.json(user);
-    } catch (err: any) {
-      console.error(err.message);
-      res.status(500).send("Server error");
+    } catch (error) {
+      console.error("Get current user error:", error);
+      res.status(500).json({ error: "Error fetching user information" });
     }
   }
 );
@@ -49,60 +33,60 @@ router.get(
 // Get all users (admin only)
 router.get(
   "/",
-  auth as RequestHandler,
-  admin as RequestHandler,
-  withAuth(async (req: Request, res: Response) => {
+  auth,
+  admin,
+  async (req: RequestWithFiles, res: Response): Promise<void> => {
     try {
       const users = await User.find().select("-password");
       res.json(users);
-    } catch (err: any) {
-      console.error(err.message);
-      res.status(500).send("Server error");
+    } catch (error) {
+      console.error("Get all users error:", error);
+      res.status(500).json({ error: "Error fetching users" });
     }
-  })
+  }
 );
 
 // Get user by ID (admin only)
 router.get(
   "/:id",
-  auth as RequestHandler,
-  admin as RequestHandler,
-  withAuth(async (req: Request, res: Response) => {
+  auth,
+  admin,
+  async (req: RequestWithFiles, res: Response): Promise<void> => {
     try {
       const user = await User.findById(req.params.id).select("-password");
       if (!user) {
-        res.status(404).json({ msg: "User not found" });
+        res.status(404).json({ error: "User not found" });
         return;
       }
       res.json(user);
-    } catch (err: any) {
-      console.error(err.message);
-      if (err.kind === "ObjectId") {
-        res.status(404).json({ msg: "User not found" });
+    } catch (error) {
+      console.error("Get user by ID error:", error);
+      if (error instanceof mongoose.Error.CastError) {
+        res.status(404).json({ error: "User not found" });
         return;
       }
-      res.status(500).send("Server error");
+      res.status(500).json({ error: "Error fetching user" });
     }
-  })
+  }
 );
 
 // Update user role (admin only)
 router.patch(
   "/:id/role",
-  auth as RequestHandler,
-  admin as RequestHandler,
-  withAuth(async (req: Request, res: Response) => {
+  auth,
+  admin,
+  async (req: RequestWithFiles, res: Response): Promise<void> => {
     try {
       const { role } = req.body as UserRequestBody;
 
-      if (!role || !["client", "vendor", "admin"].includes(role)) {
-        res.status(400).json({ msg: "Invalid role" });
+      if (!role || !["user", "vendor", "admin"].includes(role)) {
+        res.status(400).json({ error: "Invalid role" });
         return;
       }
 
       const user = await User.findById(req.params.id);
       if (!user) {
-        res.status(404).json({ msg: "User not found" });
+        res.status(404).json({ error: "User not found" });
         return;
       }
 
@@ -110,7 +94,7 @@ router.patch(
       if (user.role === "admin" && role !== "admin") {
         const adminCount = await User.countDocuments({ role: "admin" });
         if (adminCount <= 1) {
-          res.status(400).json({ msg: "Cannot remove the last admin" });
+          res.status(400).json({ error: "Cannot remove the last admin" });
           return;
         }
       }
@@ -118,28 +102,28 @@ router.patch(
       user.role = role;
       await user.save();
 
-      res.json({ msg: "User role updated successfully", user });
-    } catch (err: any) {
-      console.error(err.message);
-      if (err.kind === "ObjectId") {
-        res.status(404).json({ msg: "User not found" });
+      res.json({ message: "User role updated successfully", user });
+    } catch (error) {
+      console.error("Update user role error:", error);
+      if (error instanceof mongoose.Error.CastError) {
+        res.status(404).json({ error: "User not found" });
         return;
       }
-      res.status(500).send("Server error");
+      res.status(500).json({ error: "Error updating user role" });
     }
-  })
+  }
 );
 
 // Delete user (admin only)
 router.delete(
   "/:id",
-  auth as RequestHandler,
-  admin as RequestHandler,
-  withAuth(async (req: Request, res: Response) => {
+  auth,
+  admin,
+  async (req: RequestWithFiles, res: Response): Promise<void> => {
     try {
       const user = await User.findById(req.params.id);
       if (!user) {
-        res.status(404).json({ msg: "User not found" });
+        res.status(404).json({ error: "User not found" });
         return;
       }
 
@@ -147,22 +131,22 @@ router.delete(
       if (user.role === "admin") {
         const adminCount = await User.countDocuments({ role: "admin" });
         if (adminCount <= 1) {
-          res.status(400).json({ msg: "Cannot delete the last admin" });
+          res.status(400).json({ error: "Cannot delete the last admin" });
           return;
         }
       }
 
       await user.deleteOne();
-      res.json({ msg: "User deleted successfully" });
-    } catch (err: any) {
-      console.error(err.message);
-      if (err.kind === "ObjectId") {
-        res.status(404).json({ msg: "User not found" });
+      res.json({ message: "User deleted successfully" });
+    } catch (error) {
+      console.error("Delete user error:", error);
+      if (error instanceof mongoose.Error.CastError) {
+        res.status(404).json({ error: "User not found" });
         return;
       }
-      res.status(500).send("Server error");
+      res.status(500).json({ error: "Error deleting user" });
     }
-  })
+  }
 );
 
 export default router;

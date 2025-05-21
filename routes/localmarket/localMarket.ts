@@ -65,13 +65,24 @@ interface TransformedProduct {
   nutritionalInfo?: string;
   image?: string;
   multipleImages?: string[];
-  category?: string;
+  category?: {
+    id: string;
+    name: string;
+  };
+  vendor: {
+    id: string;
+    name: string;
+    mobile: string;
+    address: string;
+  };
   rating?: number;
   featured?: boolean;
   stock: number;
   discount?: {
     percentage: number;
+    validFrom: Date;
     validUntil: Date;
+    isActive: boolean;
   };
 }
 
@@ -91,12 +102,13 @@ const formatPrice = (price: number): string => {
 // GET all products (public)
 router.get("/", async (req: Request, res: Response): Promise<void> => {
   try {
-    const products = await LocalMarketProduct.find({ isActive: true }).populate(
-      "category"
-    );
+    const products = await LocalMarketProduct.find({ isActive: true })
+      .populate("category", "name")
+      .populate("vendor", "name mobile address")
+      .lean();
 
     const transformedProducts: TransformedProduct[] = products.map(
-      (product: ILocalMarketProduct & { category?: any }) => ({
+      (product: any) => ({
         id: product._id.toString(),
         name: product.name,
         price: formatPrice(product.price),
@@ -111,14 +123,34 @@ router.get("/", async (req: Request, res: Response): Promise<void> => {
           product.multipleImages && product.multipleImages.length > 0
             ? product.multipleImages.map((img: string) => getFullUrl(req, img))
             : undefined,
-        category: product.category?.name || product.category,
+        category: product.category
+          ? {
+              id: product.category._id.toString(),
+              name: product.category.name,
+            }
+          : undefined,
+        vendor: product.vendor
+          ? {
+              id: product.vendor._id.toString(),
+              name: product.vendor.name,
+              mobile: product.vendor.mobile,
+              address: product.vendor.address,
+            }
+          : {
+              id: "unknown",
+              name: "Unknown Vendor",
+              mobile: "N/A",
+              address: "N/A",
+            },
         rating: product.rating,
         featured: product.featured,
         stock: product.stock,
-        discount: product.discount.isActive
+        discount: product.discount
           ? {
               percentage: product.discount.percentage,
+              validFrom: product.discount.validFrom,
               validUntil: product.discount.validUntil,
+              isActive: product.discount.isActive,
             }
           : undefined,
       })
@@ -153,6 +185,17 @@ router.post(
   ]),
   withAuth(async (req: RequestWithFiles, res: Response) => {
     try {
+      if (!req.user) {
+        res.status(401).json({ msg: "Not authenticated" });
+        return;
+      }
+
+      // Ensure only vendors can create products
+      if (req.user.role !== "vendor") {
+        res.status(403).json({ msg: "Only vendors can create products" });
+        return;
+      }
+
       const {
         name,
         description,
@@ -205,7 +248,7 @@ router.post(
         careInstructions,
         nutritionalInfo,
         category: category ? new mongoose.Types.ObjectId(category) : undefined,
-        vendor: req.user?.id,
+        vendor: req.user.id,
         stock: Number(stock),
         discount: discount
           ? {
@@ -226,9 +269,9 @@ router.post(
   })
 );
 
-// PUT update product (vendor only)
+// PUT update product (vendor or admin)
 router.put(
-  "/:id",
+  "/product/:id",
   auth as RequestHandler,
   vendor as RequestHandler,
   upload.fields([
@@ -249,11 +292,12 @@ router.put(
         return;
       }
 
-      // Check if user is the vendor of this product
-      if (
-        product.vendor.toString() !== req.user.id.toString() &&
-        req.user.role !== "admin"
-      ) {
+      // Check if user is the vendor of this product or admin
+      const isVendorOfProduct =
+        product.vendor.toString() === req.user.id.toString();
+      const isAdmin = req.user.role === "admin";
+
+      if (!isVendorOfProduct && !isAdmin) {
         res.status(403).json({ msg: "Not authorized to update this product" });
         return;
       }
@@ -357,10 +401,11 @@ router.delete(
       }
 
       // Check if user is the vendor of this product or admin
-      if (
-        product.vendor.toString() !== req.user.id.toString() &&
-        req.user.role !== "admin"
-      ) {
+      const isVendorOfProduct =
+        product.vendor.toString() === req.user.id.toString();
+      const isAdmin = req.user.role === "admin";
+
+      if (!isVendorOfProduct && !isAdmin) {
         res.status(403).json({ msg: "Not authorized to delete this product" });
         return;
       }
@@ -476,8 +521,52 @@ router.get(
 
       const products = await LocalMarketProduct.find({
         vendor: req.user.id,
-      }).populate("category");
-      res.json(products);
+      })
+        .populate("category", "name")
+        .populate("vendor", "name mobile address")
+        .lean();
+
+      const transformedProducts = products.map((product: any) => ({
+        id: product._id.toString(),
+        name: product.name,
+        price: formatPrice(product.price),
+        description: product.description,
+        detailedDescription: product.detailedDescription,
+        origin: product.origin,
+        usageInstructions: product.usageInstructions,
+        careInstructions: product.careInstructions,
+        nutritionalInfo: product.nutritionalInfo,
+        image: product.image ? getFullUrl(req, product.image) : undefined,
+        multipleImages:
+          product.multipleImages && product.multipleImages.length > 0
+            ? product.multipleImages.map((img: string) => getFullUrl(req, img))
+            : undefined,
+        category: product.category
+          ? {
+              id: product.category._id.toString(),
+              name: product.category.name,
+            }
+          : undefined,
+        vendor: {
+          id: product.vendor._id.toString(),
+          name: product.vendor.name,
+          mobile: product.vendor.mobile,
+          address: product.vendor.address,
+        },
+        rating: product.rating,
+        featured: product.featured,
+        stock: product.stock,
+        discount: product.discount
+          ? {
+              percentage: product.discount.percentage,
+              validFrom: product.discount.validFrom,
+              validUntil: product.discount.validUntil,
+              isActive: product.discount.isActive,
+            }
+          : undefined,
+      }));
+
+      res.json(transformedProducts);
     } catch (err: any) {
       console.error(err.message);
       res.status(500).send("Server error");
@@ -485,45 +574,81 @@ router.get(
   }
 );
 
-// Update product discount (vendor only)
-router.patch(
-  "/:id/discount",
+// Get all products grouped by vendors (admin only)
+router.get(
+  "/admin/vendors/products",
   auth as RequestHandler,
-  vendor as RequestHandler,
-  async (req: RequestWithFiles, res: Response): Promise<void> => {
+  admin as RequestHandler,
+  async (req: Request, res: Response): Promise<void> => {
     try {
       if (!req.user) {
         res.status(401).json({ msg: "Not authenticated" });
         return;
       }
 
-      const { percentage, validFrom, validUntil } = req.body as {
-        percentage: string;
-        validFrom: string;
-        validUntil: string;
-      };
+      const products = await LocalMarketProduct.find()
+        .populate("category", "name")
+        .populate("vendor", "name mobile address")
+        .lean();
 
-      const product = await LocalMarketProduct.findById(req.params.id);
+      // Group products by vendor
+      const vendorProducts = products.reduce((acc: any, product: any) => {
+        const vendorId = product.vendor._id.toString();
+        if (!acc[vendorId]) {
+          acc[vendorId] = {
+            vendor: {
+              id: vendorId,
+              name: product.vendor.name,
+              mobile: product.vendor.mobile,
+              address: product.vendor.address,
+            },
+            products: [],
+          };
+        }
 
-      if (!product) {
-        res.status(404).json({ msg: "Product not found" });
-        return;
-      }
+        acc[vendorId].products.push({
+          id: product._id.toString(),
+          name: product.name,
+          price: formatPrice(product.price),
+          description: product.description,
+          detailedDescription: product.detailedDescription,
+          origin: product.origin,
+          usageInstructions: product.usageInstructions,
+          careInstructions: product.careInstructions,
+          nutritionalInfo: product.nutritionalInfo,
+          image: product.image ? getFullUrl(req, product.image) : undefined,
+          multipleImages:
+            product.multipleImages && product.multipleImages.length > 0
+              ? product.multipleImages.map((img: string) =>
+                  getFullUrl(req, img)
+                )
+              : undefined,
+          category: product.category
+            ? {
+                id: product.category._id.toString(),
+                name: product.category.name,
+              }
+            : undefined,
+          rating: product.rating,
+          featured: product.featured,
+          stock: product.stock,
+          discount: product.discount
+            ? {
+                percentage: product.discount.percentage,
+                validFrom: product.discount.validFrom,
+                validUntil: product.discount.validUntil,
+                isActive: product.discount.isActive,
+              }
+            : undefined,
+        });
 
-      if (product.vendor.toString() !== req.user.id.toString()) {
-        res.status(403).json({ msg: "Not authorized to update this product" });
-        return;
-      }
+        return acc;
+      }, {});
 
-      product.discount = {
-        percentage: Number(percentage),
-        validFrom: new Date(validFrom),
-        validUntil: new Date(validUntil),
-        isActive: true,
-      };
+      // Convert to array format
+      const result = Object.values(vendorProducts);
 
-      await product.save();
-      res.json(product);
+      res.json(result);
     } catch (err: any) {
       console.error(err.message);
       res.status(500).send("Server error");

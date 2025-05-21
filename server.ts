@@ -21,12 +21,12 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 import authRoutes from "./routes/auth";
 import categoryRoutes from "./routes/localmarket/category";
 import localMarketProductRoutes from "./routes/localmarket/localMarket";
-import orderRoutes from "./routes/orders/orders";
+import orderRoutes from "./routes/localmarket/orders/orders";
 import userRoutes from "./routes/users/users";
 
 app.use("/api/auth", authRoutes);
 app.use("/api/categories", categoryRoutes);
-app.use("/api/localmarketproduct", localMarketProductRoutes);
+app.use("/api/localmarket", localMarketProductRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/users", userRoutes);
 

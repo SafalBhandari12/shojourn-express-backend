@@ -146,4 +146,23 @@ router.delete(
   })
 );
 
+// Get current user's information
+router.get(
+  "/me",
+  auth as RequestHandler,
+  withAuth(async (req: Request, res: Response) => {
+    try {
+      const user = await User.findById(req.user?.id).select("-password");
+      if (!user) {
+        res.status(404).json({ msg: "User not found" });
+        return;
+      }
+      res.json(user);
+    } catch (err: any) {
+      console.error(err.message);
+      res.status(500).send("Server error");
+    }
+  })
+);
+
 export default router;

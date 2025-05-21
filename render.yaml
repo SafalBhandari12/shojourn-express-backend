@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: sojourn-backend
+    env: node
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_OPTIONS
+        value: --max-old-space-size=512
+    healthCheckPath: /api/health
+    autoDeploy: true

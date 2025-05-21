@@ -4,6 +4,8 @@ import dotenv from "dotenv";
 import connectDB from "./config/db";
 import path from "path";
 import cors from "cors";
+import helmet from "helmet";
+import compression from "compression";
 
 dotenv.config();
 
@@ -13,9 +15,16 @@ connectDB();
 const app = express();
 
 // Middleware
+app.use(helmet()); // Security headers
+app.use(compression()); // Compress responses
 app.use(cors({ origin: "*" }));
-app.use(express.json());
+app.use(express.json({ limit: "10mb" })); // Limit JSON payload size
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+// Health check endpoint
+app.get("/api/health", (req: Request, res: Response) => {
+  res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
+});
 
 // Routes
 import authRoutes from "./routes/auth";

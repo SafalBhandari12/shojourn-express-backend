@@ -225,28 +225,29 @@ router.patch(
 // Cancel order (user only)
 router.patch(
   "/:id/cancel",
-  auth as RequestHandler,
-  withAuth(async (req: RequestWithFiles, res: Response) => {
+  auth,
+  async (req: RequestWithFiles, res: Response): Promise<void> => {
     try {
       const order = await Order.findById(req.params.id);
       if (!order) {
-        res.status(404).json({ msg: "Order not found" });
+        res.status(404).json({ error: "Order not found" });
         return;
       }
 
       if (order.user.toString() !== req.user?.id) {
-        res.status(403).json({ msg: "Not authorized" });
+        res.status(403).json({ error: "Not authorized" });
         return;
       }
 
       if (order.status !== "pending") {
-        res.status(400).json({ msg: "Cannot cancel order in current status" });
+        res
+          .status(400)
+          .json({ error: "Cannot cancel order in current status" });
         return;
       }
 
       // Restore product stock
-      const orderItems = await OrderItem.find({ order: order._id });
-      for (const item of orderItems) {
+      for (const item of order.items) {
         const product = await LocalMarketProduct.findById(item.product);
         if (product) {
           product.stock += item.quantity;
@@ -257,11 +258,11 @@ router.patch(
       order.status = "cancelled";
       await order.save();
       res.json(order);
-    } catch (err: any) {
-      console.error(err.message);
-      res.status(500).send("Server error");
+    } catch (error) {
+      console.error("Cancel order error:", error);
+      res.status(500).json({ error: "Error cancelling order" });
     }
-  })
+  }
 );
 
 export default router;

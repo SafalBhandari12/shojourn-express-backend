@@ -9,7 +9,10 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "moduleResolution": "node",
-    "typeRoots": ["./types", "./node_modules/@types"]
+    "typeRoots": ["./types", "./node_modules/@types"],
+    "allowJs": true,
+    "noImplicitAny": false,
+    "forceConsistentCasingInFileNames": true
   },
   "include": ["**/*.ts", "types"],
   "exclude": ["node_modules", "dist", "uploads"]

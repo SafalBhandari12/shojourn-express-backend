@@ -5,7 +5,7 @@ services:
     buildCommand: |
       npm install --production=false
       npm install -g rimraf
-      npm install --save-dev @types/jsonwebtoken @types/bcryptjs @types/cors @types/compression
+      npm install --save-dev @types/jsonwebtoken @types/bcryptjs @types/cors @types/compression @types/express @types/node
       npm run build
     startCommand: npm start
     envVars:
@@ -13,5 +13,7 @@ services:
         value: production
       - key: NODE_OPTIONS
         value: --max-old-space-size=512
+      - key: PORT
+        value: 10000
     healthCheckPath: /api/health
     autoDeploy: true

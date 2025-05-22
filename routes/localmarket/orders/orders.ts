@@ -106,6 +106,7 @@ router.post(
 
         // Update product stock
         product.stock -= item.quantity;
+        product.boughtBy += item.quantity;
         await product.save();
       }
 

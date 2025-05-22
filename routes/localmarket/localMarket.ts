@@ -20,6 +20,7 @@ import { auth } from "../../middleware/auth";
 import { admin } from "../../middleware/admin";
 import { vendor } from "../../middleware/vendor";
 import { RequestWithFiles } from "../../types/express";
+import Order from "../../models/Order";
 
 const router = Router();
 
@@ -649,6 +650,71 @@ router.get(
       const result = Object.values(vendorProducts);
 
       res.json(result);
+    } catch (err: any) {
+      console.error(err.message);
+      res.status(500).send("Server error");
+    }
+  }
+);
+
+// Rate a product (only for users who have bought it)
+router.post(
+  "/product/:id/rate",
+  auth as RequestHandler,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      if (!req.user) {
+        res.status(401).json({ msg: "Not authenticated" });
+        return;
+      }
+
+      const { rating } = req.body;
+      if (!rating || typeof rating !== "number" || rating < 0 || rating > 5) {
+        res
+          .status(400)
+          .json({ msg: "Invalid rating. Must be a number between 0 and 5" });
+        return;
+      }
+
+      const product = await LocalMarketProduct.findById(req.params.id);
+      if (!product) {
+        res.status(404).json({ msg: "Product not found" });
+        return;
+      }
+
+      // Check if user has bought this product
+      const order = await Order.findOne({
+        user: req.user.id,
+        items: {
+          $elemMatch: {
+            product: product._id,
+          },
+        },
+        status: "delivered", // Only allow rating after delivery
+      });
+
+      if (!order) {
+        res.status(403).json({
+          msg: "You can only rate products you have purchased and received",
+        });
+        return;
+      }
+
+      // Update the rating
+      const currentRating = product.rating || 0;
+      const totalRatings = product.boughtBy;
+      const newRating =
+        (currentRating * totalRatings + rating) / (totalRatings + 1);
+
+      product.rating = newRating;
+      product.boughtBy = totalRatings + 1;
+      await product.save();
+
+      res.json({
+        msg: "Rating updated successfully",
+        newRating: newRating,
+        totalRatings: totalRatings + 1,
+      });
     } catch (err: any) {
       console.error(err.message);
       res.status(500).send("Server error");

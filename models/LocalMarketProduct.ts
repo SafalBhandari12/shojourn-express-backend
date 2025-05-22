@@ -25,6 +25,7 @@ export interface ILocalMarketProduct extends Document {
   };
   images: string[];
   isActive: boolean;
+  boughtBy: number;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -50,6 +51,8 @@ const LocalMarketProductSchema = new Schema<ILocalMarketProduct>(
       type: Number,
       min: 0,
       max: 5,
+      select: false,
+      default: 0,
     },
     featured: {
       type: Boolean,
@@ -71,6 +74,10 @@ const LocalMarketProductSchema = new Schema<ILocalMarketProduct>(
     isActive: {
       type: Boolean,
       default: true,
+    },
+    boughtBy: {
+      type: Number,
+      default: 0,
     },
   },
   { timestamps: true }

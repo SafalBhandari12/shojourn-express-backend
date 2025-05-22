@@ -28,7 +28,10 @@ router.post("/mobile", async (req: Request, res: Response): Promise<void> => {
     return;
   }
   try {
-    const user = await User.findOne({ mobile });
+    // Normalize mobile number by removing any spaces or special characters
+    const normalizedMobile = mobile.replace(/[^0-9+]/g, "");
+
+    const user = await User.findOne({ mobile: normalizedMobile });
     if (user) {
       const otp = generateOTP();
       user.otp = otp;
@@ -38,7 +41,7 @@ router.post("/mobile", async (req: Request, res: Response): Promise<void> => {
       await client.messages.create({
         body: `Your login verification code is: ${otp}`,
         from: process.env.TWILIO_PHONE_NUMBER as string,
-        to: mobile,
+        to: normalizedMobile,
       });
       res.status(200).json({ msg: "OTP sent to your mobile" });
     } else {
@@ -166,7 +169,10 @@ router.post("/verify", async (req: Request, res: Response): Promise<void> => {
     return;
   }
   try {
-    const user = await User.findOne({ mobile });
+    // Normalize mobile number by removing any spaces or special characters
+    const normalizedMobile = mobile.replace(/[^0-9+]/g, "");
+
+    const user = await User.findOne({ mobile: normalizedMobile });
     if (!user) {
       res.status(400).json({ msg: "User not found" });
       return;
@@ -194,7 +200,17 @@ router.post("/verify", async (req: Request, res: Response): Promise<void> => {
       { expiresIn: "100h" },
       (err: Error | null, token: string | undefined) => {
         if (err) throw err;
-        res.status(200).json({ token });
+        res.status(200).json({
+          token,
+          user: {
+            id: user._id,
+            name: user.name,
+            mobile: user.mobile,
+            role: user.role,
+            isVerified: user.isVerified,
+            address: user.address,
+          },
+        });
       }
     );
   } catch (err: any) {

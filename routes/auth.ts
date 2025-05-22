@@ -171,6 +171,7 @@ router.post("/verify", async (req: Request, res: Response): Promise<void> => {
   try {
     // Normalize mobile number by removing any spaces or special characters
     const normalizedMobile = mobile.replace(/[^0-9+]/g, "");
+    console.log(normalizedMobile);
 
     const user = await User.findOne({ mobile: normalizedMobile });
     if (!user) {

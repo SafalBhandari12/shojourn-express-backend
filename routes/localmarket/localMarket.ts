@@ -87,6 +87,21 @@ interface TransformedProduct {
   };
 }
 
+// Define type for populated product
+interface PopulatedProduct
+  extends Omit<ILocalMarketProduct, "category" | "vendor"> {
+  category?: {
+    _id: Types.ObjectId;
+    name: string;
+  };
+  vendor: {
+    _id: Types.ObjectId;
+    name: string;
+    mobile: string;
+    address: string;
+  };
+}
+
 // Helper functions
 const getFullUrl = (req: Request, filename: string): string => {
   const baseUrl = req.protocol + "://" + req.get("host");
@@ -158,6 +173,76 @@ router.get("/", async (req: Request, res: Response): Promise<void> => {
     );
 
     res.json(transformedProducts);
+  } catch (err: any) {
+    console.error(err.message);
+    res.status(500).send("Server error");
+  }
+});
+
+// GET single product by ID (public)
+router.get("/:id", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const product = (await LocalMarketProduct.findOne({
+      _id: req.params.id,
+      isActive: true,
+    })
+      .populate("category", "name")
+      .populate("vendor", "name mobile address")
+      .lean()) as PopulatedProduct;
+
+    if (!product) {
+      res.status(404).json({ msg: "Product not found" });
+      return;
+    }
+
+    const transformedProduct: TransformedProduct = {
+      id: product._id.toString(),
+      name: product.name,
+      price: formatPrice(product.price),
+      description: product.description,
+      detailedDescription: product.detailedDescription,
+      origin: product.origin,
+      usageInstructions: product.usageInstructions,
+      careInstructions: product.careInstructions,
+      nutritionalInfo: product.nutritionalInfo,
+      image: product.image ? getFullUrl(req, product.image) : undefined,
+      multipleImages:
+        product.multipleImages && product.multipleImages.length > 0
+          ? product.multipleImages.map((img: string) => getFullUrl(req, img))
+          : undefined,
+      category: product.category
+        ? {
+            id: product.category._id.toString(),
+            name: product.category.name,
+          }
+        : undefined,
+      vendor: product.vendor
+        ? {
+            id: product.vendor._id.toString(),
+            name: product.vendor.name,
+            mobile: product.vendor.mobile,
+            address: product.vendor.address,
+          }
+        : {
+            id: "unknown",
+            name: "Unknown Vendor",
+            mobile: "N/A",
+            address: "N/A",
+          },
+      rating: product.rating,
+      featured: product.featured,
+      stock: product.stock,
+      discount: product.discount
+        ? {
+            percentage: product.discount.percentage,
+            validFrom: product.discount.validFrom,
+            validUntil: product.discount.validUntil,
+            isActive: product.discount.isActive,
+          }
+        : undefined,
+    };
+
+    res.json(transformedProduct);
   } catch (err: any) {
     console.error(err.message);
     res.status(500).send("Server error");

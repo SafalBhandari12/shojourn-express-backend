@@ -23,7 +23,6 @@ export interface ILocalMarketProduct extends Document {
     validFrom: Date;
     validUntil: Date;
   };
-  images: string[];
   isActive: boolean;
   boughtBy: number;
   createdAt?: Date;
@@ -70,7 +69,6 @@ const LocalMarketProductSchema = new Schema<ILocalMarketProduct>(
       validFrom: { type: Date },
       validUntil: { type: Date },
     },
-    images: [{ type: String }],
     isActive: {
       type: Boolean,
       default: true,

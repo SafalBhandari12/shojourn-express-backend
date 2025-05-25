@@ -50,11 +50,23 @@ const storage: StorageEngine = new GridFsStorage({
   },
 }) as unknown as StorageEngine;
 
-// Configure multer with specific field names
+// Configure multer with specific field names and limits
 const upload = multer({
   storage,
   limits: {
     fileSize: 5 * 1024 * 1024, // 5MB limit
+    files: 5, // Maximum 5 files
+  },
+  fileFilter: (
+    _req: Express.Request,
+    file: Express.Multer.File,
+    cb: multer.FileFilterCallback
+  ) => {
+    // Accept images only
+    if (!file.originalname.match(/\.(jpg|jpeg|png|gif)$/)) {
+      return cb(new Error("Only image files are allowed!"));
+    }
+    cb(null, true);
   },
 });
 
@@ -75,17 +87,18 @@ const parseFormDataFields = (
       }
     }
 
-    // Parse any other JSON string fields if needed
-    const jsonFields = ["category", "vendor"];
-    jsonFields.forEach((field) => {
-      if (req.body[field] && typeof req.body[field] === "string") {
-        try {
-          req.body[field] = JSON.parse(req.body[field]);
-        } catch (e) {
-          console.error(`Error parsing ${field}:`, e);
-        }
+    // Only parse 'vendor' if it looks like a JSON object
+    if (
+      req.body.vendor &&
+      typeof req.body.vendor === "string" &&
+      req.body.vendor.trim().startsWith("{")
+    ) {
+      try {
+        req.body.vendor = JSON.parse(req.body.vendor);
+      } catch (e) {
+        console.error(`Error parsing vendor:`, e);
       }
-    });
+    }
 
     next();
   } catch (error) {
@@ -359,10 +372,14 @@ const withAuth = (handler: RequestHandler): RequestHandler => {
 // POST new product (vendor only)
 router.post(
   "/",
-  [auth, vendorMiddleware] as RequestHandler[],
-  upload.array("images", 5),
+  auth as RequestHandler,
+  vendorMiddleware as RequestHandler,
+  upload.fields([
+    { name: "image", maxCount: 1 },
+    { name: "multipleImages", maxCount: 5 },
+  ]),
   parseFormDataFields,
-  withAuth(async (req: RequestWithFiles, res: Response) => {
+  async (req: RequestWithFiles, res: Response) => {
     try {
       if (!req.user) {
         res.status(401).json({ msg: "Not authenticated" });
@@ -402,13 +419,22 @@ router.post(
         }
       }
 
+      // Handle single image
       let imagePath = "";
+      if (req.files && req.files["image"] && req.files["image"].length > 0) {
+        imagePath = req.files["image"][0].filename;
+      }
+
+      // Handle multiple images
+      let multipleImages: string[] | undefined = undefined;
       if (
         req.files &&
-        "images" in req.files &&
-        req.files["images"].length > 0
+        req.files["multipleImages"] &&
+        req.files["multipleImages"].length > 0
       ) {
-        imagePath = req.files["images"][0].filename;
+        multipleImages = req.files["multipleImages"].map(
+          (file: any) => file.filename
+        );
       }
 
       // Handle discount object
@@ -461,6 +487,7 @@ router.post(
         detailedDescription,
         price: Number(price),
         image: imagePath,
+        multipleImages,
         origin,
         usageInstructions,
         careInstructions,
@@ -477,14 +504,18 @@ router.post(
       console.error(err.message);
       res.status(500).json({ msg: "Server error", error: err.message });
     }
-  })
+  }
 );
 
 // PUT update product (vendor or admin)
 router.put(
   "/product/:id",
-  [auth, vendorMiddleware] as RequestHandler[],
-  upload.array("images", 5),
+  auth as RequestHandler,
+  vendorMiddleware as RequestHandler,
+  upload.fields([
+    { name: "image", maxCount: 1 },
+    { name: "multipleImages", maxCount: 5 },
+  ]),
   parseFormDataFields,
   withAuth(async (req: RequestWithFiles, res: Response) => {
     try {
@@ -592,11 +623,7 @@ router.put(
       if (stock !== undefined) product.stock = Number(stock);
 
       // Handle image upload
-      if (
-        req.files &&
-        "images" in req.files &&
-        req.files["images"].length > 0
-      ) {
+      if (req.files && req.files["image"] && req.files["image"].length > 0) {
         // Delete old image if it exists
         if (product.image) {
           try {
@@ -609,7 +636,32 @@ router.put(
           }
         }
         // Set new image
-        product.image = req.files["images"][0].filename;
+        product.image = req.files["image"][0].filename;
+      }
+
+      // Handle multiple images upload
+      if (
+        req.files &&
+        req.files["multipleImages"] &&
+        req.files["multipleImages"].length > 0
+      ) {
+        // Delete old multiple images if they exist
+        if (product.multipleImages && product.multipleImages.length > 0) {
+          for (const filename of product.multipleImages) {
+            try {
+              const file = await gfs.find({ filename }).toArray();
+              if (file.length > 0) {
+                await gfs.delete(file[0]._id);
+              }
+            } catch (error) {
+              console.error("Error deleting old multiple image:", error);
+            }
+          }
+        }
+        // Set new multiple images
+        product.multipleImages = req.files["multipleImages"].map(
+          (file: any) => file.filename
+        );
       }
 
       await product.save();

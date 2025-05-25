@@ -26,10 +26,7 @@ app.use(helmet()); // Security headers
 app.use(compression()); // Compress responses
 app.use(
   cors({
-    origin:
-      process.env.NODE_ENV === "production"
-        ? process.env.ALLOWED_ORIGINS?.split(",") || []
-        : "*",
+    origin: "*", // Allow all origins
     credentials: true,
   })
 );

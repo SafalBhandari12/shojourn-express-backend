@@ -33,6 +33,30 @@ interface OrderItemType {
   vendor: mongoose.Types.ObjectId;
 }
 
+// Add interface for populated product
+interface PopulatedProduct {
+  _id: mongoose.Types.ObjectId;
+  name: string;
+  description: string;
+  price: number;
+  images: string[];
+  stock: number;
+  category: string;
+  vendor: mongoose.Types.ObjectId;
+  discount: {
+    isActive: boolean;
+    percentage: number;
+    validFrom: Date;
+    validUntil: Date;
+  };
+  boughtBy: number;
+  averageRating: number;
+  ratings: Array<{
+    user: mongoose.Types.ObjectId;
+    value: number;
+  }>;
+}
+
 // Helper function to type check middleware
 const withAuth = (handler: RequestHandler): RequestHandler => {
   return async (req: RequestWithFiles, res: Response, next: NextFunction) => {
@@ -175,29 +199,54 @@ router.get(
                 userRating = found ? found.value : null;
               }
 
+              // Create a clean product object without ratings
+              const cleanProduct = item.product
+                ? {
+                    _id: (item.product as unknown as PopulatedProduct)._id,
+                    name: (item.product as unknown as PopulatedProduct).name,
+                    description: (item.product as unknown as PopulatedProduct)
+                      .description,
+                    price: (item.product as unknown as PopulatedProduct).price,
+                    images: (item.product as unknown as PopulatedProduct)
+                      .images,
+                    stock: (item.product as unknown as PopulatedProduct).stock,
+                    category: (item.product as unknown as PopulatedProduct)
+                      .category,
+                    vendor: (item.product as unknown as PopulatedProduct)
+                      .vendor,
+                    discount: (item.product as unknown as PopulatedProduct)
+                      .discount,
+                    boughtBy: (item.product as unknown as PopulatedProduct)
+                      .boughtBy,
+                    averageRating: (item.product as unknown as PopulatedProduct)
+                      .averageRating,
+                  }
+                : null;
+
               return {
-                product: item.product,
+                orderId: order._id,
+                product: cleanProduct,
                 quantity: item.quantity,
                 price: item.price,
                 vendor: item.vendor,
                 userRating,
+                status: order.status,
+                createdAt: order.createdAt,
+                updatedAt: order.updatedAt,
+                shippingAddress: order.shippingAddress,
+                paymentMethod: order.paymentMethod,
+                totalAmount: order.totalAmount,
               };
             })
           );
 
-          return {
-            status: order.status,
-            items: itemsWithRatings,
-            totalAmount: order.totalAmount,
-            shippingAddress: order.shippingAddress,
-            paymentMethod: order.paymentMethod,
-            createdAt: order.createdAt,
-            updatedAt: order.updatedAt,
-          };
+          return itemsWithRatings;
         })
       );
 
-      res.json(ordersWithRatings);
+      // Flatten the array of arrays into a single array of items
+      const flattenedOrders = ordersWithRatings.flat();
+      res.json(flattenedOrders);
     } catch (error) {
       console.error("Get user orders error:", error);
       res.status(500).json({ error: "Error fetching orders" });

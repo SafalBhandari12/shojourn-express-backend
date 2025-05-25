@@ -51,18 +51,27 @@ import categoryRoutes from "./routes/localmarket/category";
 import localMarketProductRoutes from "./routes/localmarket/localMarket";
 import orderRoutes from "./routes/localmarket/orders/orders";
 import userRoutes from "./routes/users/users";
+import adventureRoutes from "./routes/adventure";
 
+// Register routes
 app.use("/api/auth", authRoutes);
 app.use("/api/categories", categoryRoutes);
-app.use("/api/localmarket", localMarketProductRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/adventures", adventureRoutes);
 
-// Image handling route
-app.use("/api/images", (req: Request, res: Response, next: NextFunction) => {
-  req.url = "/image" + req.url;
-  localMarketProductRoutes(req, res, next);
-});
+// Image handling route - must be before the localmarket routes
+app.use(
+  "/api/images",
+  (req: Request, res: Response, next: NextFunction) => {
+    req.url = `/image${req.url}`;
+    next();
+  },
+  localMarketProductRoutes
+);
+
+// Local market routes
+app.use("/api/localmarket", localMarketProductRoutes);
 
 // Error handling middleware
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {

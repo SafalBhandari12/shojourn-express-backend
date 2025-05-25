@@ -10,7 +10,7 @@ import Order, { IOrder, OrderStatus } from "../../../models/Order";
 import OrderItem from "../../../models/OrderItem";
 import LocalMarketProduct from "../../../models/LocalMarketProduct";
 import { auth } from "../../../middleware/auth";
-import { vendor } from "../../../middleware/vendor";
+import vendorMiddleware from "../../../middleware/vendorMiddleware";
 import { admin } from "../../../middleware/admin";
 import { RequestWithFiles } from "../../../types/express";
 
@@ -147,8 +147,7 @@ router.get(
 // Get vendor's orders
 router.get(
   "/vendor",
-  auth,
-  vendor,
+  [auth, vendorMiddleware] as RequestHandler[],
   async (req: RequestWithFiles, res: Response): Promise<void> => {
     try {
       const orders = await Order.find({ "items.vendor": req.user?.id })
@@ -185,8 +184,7 @@ router.get(
 // Update order status (vendor only)
 router.patch(
   "/:id/status",
-  auth,
-  vendor,
+  [auth, vendorMiddleware] as RequestHandler[],
   async (req: RequestWithFiles, res: Response): Promise<void> => {
     try {
       const { status } = req.body as OrderRequestBody;

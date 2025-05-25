@@ -17,8 +17,7 @@ import LocalMarketProduct, {
 } from "../../models/LocalMarketProduct";
 import Category from "../../models/Category";
 import { auth } from "../../middleware/auth";
-import { admin } from "../../middleware/admin";
-import { vendor } from "../../middleware/vendor";
+import vendorMiddleware from "../../middleware/vendorMiddleware";
 import { RequestWithFiles } from "../../types/express";
 import Order from "../../models/Order";
 
@@ -114,6 +113,45 @@ const formatPrice = (price: number): string => {
     new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(price)
   );
 };
+
+// GET image - must be before the /:id route
+router.get(
+  "/image/:filename",
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const filename = req.params.filename;
+      const file = await gfs.find({ filename }).toArray();
+      if (!file || file.length === 0) {
+        res.status(404).json({ msg: "No file exists" });
+        return;
+      }
+
+      // Set appropriate content type
+      const contentType = file[0].contentType || "image/jpeg";
+      res.set("Content-Type", contentType);
+
+      // Set cache control headers
+      res.set("Cache-Control", "public, max-age=31536000"); // Cache for 1 year
+
+      const downloadStream = gfs.openDownloadStreamByName(filename);
+
+      // Handle stream errors
+      downloadStream.on("error", (error) => {
+        console.error("Stream error:", error);
+        if (!res.headersSent) {
+          res.status(500).json({ msg: "Error streaming file" });
+        }
+      });
+
+      downloadStream.pipe(res);
+    } catch (err: any) {
+      console.error(err.message);
+      if (!res.headersSent) {
+        res.status(500).json({ msg: "Server error" });
+      }
+    }
+  }
+);
 
 // GET all products (public)
 router.get("/", async (req: Request, res: Response): Promise<void> => {
@@ -263,12 +301,8 @@ const withAuth = (handler: RequestHandler): RequestHandler => {
 // POST new product (vendor only)
 router.post(
   "/",
-  auth as RequestHandler,
-  vendor as RequestHandler,
-  upload.fields([
-    { name: "image", maxCount: 1 },
-    { name: "multipleImages", maxCount: 5 },
-  ]),
+  [auth, vendorMiddleware] as RequestHandler[],
+  upload.array("images", 5),
   withAuth(async (req: RequestWithFiles, res: Response) => {
     try {
       if (!req.user) {
@@ -310,16 +344,12 @@ router.post(
       }
 
       let imagePath = "";
-      const files = req.files as { [fieldname: string]: Express.Multer.File[] };
-      if (files && "image" in files && files["image"][0]) {
-        imagePath = files["image"][0].filename;
-      }
-
-      let multipleImagesPaths: string[] = [];
-      if (files && "multipleImages" in files) {
-        multipleImagesPaths = files["multipleImages"].map(
-          (file: Express.Multer.File) => file.filename
-        );
+      if (
+        req.files &&
+        "images" in req.files &&
+        req.files["images"].length > 0
+      ) {
+        imagePath = req.files["images"][0].filename;
       }
 
       const newProduct = new LocalMarketProduct({
@@ -328,7 +358,6 @@ router.post(
         detailedDescription,
         price: Number(price),
         image: imagePath,
-        multipleImages: multipleImagesPaths,
         origin,
         usageInstructions,
         careInstructions,
@@ -350,7 +379,7 @@ router.post(
       res.json(savedProduct);
     } catch (err: any) {
       console.error(err.message);
-      res.status(500).send("Server error");
+      res.status(500).json({ msg: "Server error", error: err.message });
     }
   })
 );
@@ -358,13 +387,9 @@ router.post(
 // PUT update product (vendor or admin)
 router.put(
   "/product/:id",
-  auth as RequestHandler,
-  vendor as RequestHandler,
-  upload.fields([
-    { name: "image", maxCount: 1 },
-    { name: "multipleImages", maxCount: 5 },
-  ]),
-  withAuth(async (req: Request, res: Response) => {
+  [auth, vendorMiddleware] as RequestHandler[],
+  upload.array("images", 5),
+  withAuth(async (req: RequestWithFiles, res: Response) => {
     try {
       if (!req.user) {
         res.status(401).json({ msg: "Not authenticated" });
@@ -388,6 +413,7 @@ router.put(
         return;
       }
 
+      // Parse the request body
       const {
         name,
         description,
@@ -401,6 +427,24 @@ router.put(
         stock,
         discount,
       } = req.body;
+
+      // Handle discount object
+      if (discount) {
+        try {
+          const discountObj =
+            typeof discount === "string" ? JSON.parse(discount) : discount;
+          product.discount = {
+            percentage: Number(discountObj.percentage),
+            validFrom: new Date(discountObj.validFrom),
+            validUntil: new Date(discountObj.validUntil),
+            isActive: true,
+          };
+        } catch (error) {
+          console.error("Error parsing discount:", error);
+          res.status(400).json({ msg: "Invalid discount format" });
+          return;
+        }
+      }
 
       if (category) {
         const categoryDoc = await Category.findById(category);
@@ -425,45 +469,39 @@ router.put(
         product.nutritionalInfo = nutritionalInfo;
       if (stock !== undefined) product.stock = Number(stock);
 
-      if (discount) {
-        product.discount = {
-          percentage: Number(discount.percentage),
-          validFrom: new Date(discount.validFrom),
-          validUntil: new Date(discount.validUntil),
-          isActive: true,
-        };
-      }
-
-      if (req.files) {
-        if ("image" in req.files && req.files["image"][0]) {
-          if (product.image) {
+      // Handle image upload
+      if (
+        req.files &&
+        "images" in req.files &&
+        req.files["images"].length > 0
+      ) {
+        // Delete old image if it exists
+        if (product.image) {
+          try {
             const file = await gfs.find({ filename: product.image }).toArray();
             if (file.length > 0) {
               await gfs.delete(file[0]._id);
             }
+          } catch (error) {
+            console.error("Error deleting old image:", error);
           }
-          product.image = req.files["image"][0].filename;
         }
-        if ("multipleImages" in req.files) {
-          if (product.multipleImages && product.multipleImages.length > 0) {
-            for (const filename of product.multipleImages) {
-              const file = await gfs.find({ filename }).toArray();
-              if (file.length > 0) {
-                await gfs.delete(file[0]._id);
-              }
-            }
-          }
-          product.multipleImages = req.files["multipleImages"].map(
-            (file: Express.Multer.File) => file.filename
-          );
-        }
+        // Set new image
+        product.image = req.files["images"][0].filename;
       }
 
       await product.save();
-      res.json(product);
+
+      // Return the updated product with populated fields
+      const updatedProduct = await LocalMarketProduct.findById(product._id)
+        .populate("category", "name")
+        .populate("vendor", "name mobile address")
+        .lean();
+
+      res.json(updatedProduct);
     } catch (err: any) {
       console.error(err.message);
-      res.status(500).send("Server error");
+      res.status(500).json({ msg: "Server error", error: err.message });
     }
   })
 );
@@ -471,8 +509,7 @@ router.put(
 // DELETE product (vendor or admin)
 router.delete(
   "/:id",
-  auth as RequestHandler,
-  vendor as RequestHandler,
+  [auth, vendorMiddleware] as RequestHandler[],
   async (req: RequestWithFiles, res: Response): Promise<void> => {
     try {
       if (!req.user) {
@@ -524,20 +561,39 @@ router.delete(
 
 // GET image
 router.get(
-  "/image/:filename",
+  ["/image/:filename", "/:filename"],
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const file = await gfs.find({ filename: req.params.filename }).toArray();
+      const filename = req.params.filename;
+      const file = await gfs.find({ filename }).toArray();
       if (!file || file.length === 0) {
         res.status(404).json({ msg: "No file exists" });
         return;
       }
 
-      const downloadStream = gfs.openDownloadStreamByName(req.params.filename);
+      // Set appropriate content type
+      const contentType = file[0].contentType || "image/jpeg";
+      res.set("Content-Type", contentType);
+
+      // Set cache control headers
+      res.set("Cache-Control", "public, max-age=31536000"); // Cache for 1 year
+
+      const downloadStream = gfs.openDownloadStreamByName(filename);
+
+      // Handle stream errors
+      downloadStream.on("error", (error) => {
+        console.error("Stream error:", error);
+        if (!res.headersSent) {
+          res.status(500).json({ msg: "Error streaming file" });
+        }
+      });
+
       downloadStream.pipe(res);
     } catch (err: any) {
       console.error(err.message);
-      res.status(500).send("Server error");
+      if (!res.headersSent) {
+        res.status(500).json({ msg: "Server error" });
+      }
     }
   }
 );
@@ -596,8 +652,7 @@ router.delete(
 // Get vendor's products
 router.get(
   "/vendor/products",
-  auth as RequestHandler,
-  vendor as RequestHandler,
+  [auth, vendorMiddleware] as RequestHandler[],
   async (req: RequestWithFiles, res: Response): Promise<void> => {
     try {
       if (!req.user) {
@@ -664,7 +719,7 @@ router.get(
 router.get(
   "/admin/vendors/products",
   auth as RequestHandler,
-  admin as RequestHandler,
+  vendorMiddleware as RequestHandler,
   async (req: Request, res: Response): Promise<void> => {
     try {
       if (!req.user) {

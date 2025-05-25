@@ -24,6 +24,11 @@ if (!fs.existsSync(uploadsDir)) {
 // Middleware
 app.use(helmet()); // Security headers
 app.use(compression()); // Compress responses
+// Set Cross-Origin-Resource-Policy header for all responses
+app.use((req, res, next) => {
+  res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+  next();
+});
 app.use(
   cors({
     origin: "*", // Allow all origins

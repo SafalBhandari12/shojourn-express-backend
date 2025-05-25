@@ -25,6 +25,10 @@ export interface ILocalMarketProduct extends Document {
   };
   isActive: boolean;
   boughtBy: number;
+  ratings?: Array<{
+    user: mongoose.Types.ObjectId;
+    value: number;
+  }>;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -77,6 +81,12 @@ const LocalMarketProductSchema = new Schema<ILocalMarketProduct>(
       type: Number,
       default: 0,
     },
+    ratings: [
+      {
+        user: { type: Schema.Types.ObjectId, ref: "User" },
+        value: { type: Number, min: 0, max: 5 },
+      },
+    ],
   },
   { timestamps: true }
 );

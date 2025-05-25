@@ -232,8 +232,15 @@ router.get("/", async (req: Request, res: Response): Promise<void> => {
       .populate("vendor", "name mobile address")
       .lean();
 
-    const transformedProducts: TransformedProduct[] = products.map(
-      (product: any) => ({
+    const transformedProducts: any[] = products.map((product: any) => {
+      // Calculate average rating from ratings array
+      let avgRating = 0;
+      if (product.ratings && product.ratings.length > 0) {
+        avgRating =
+          product.ratings.reduce((sum: number, r: any) => sum + r.value, 0) /
+          product.ratings.length;
+      }
+      return {
         id: product._id.toString(),
         name: product.name,
         price: formatPrice(product.price),
@@ -267,7 +274,8 @@ router.get("/", async (req: Request, res: Response): Promise<void> => {
               mobile: "N/A",
               address: "N/A",
             },
-        rating: product.rating,
+        rating: avgRating,
+        boughtBy: product.ratings ? product.ratings.length : 0,
         featured: product.featured,
         stock: product.stock,
         discount: product.discount
@@ -278,8 +286,8 @@ router.get("/", async (req: Request, res: Response): Promise<void> => {
               isActive: product.discount.isActive,
             }
           : undefined,
-      })
-    );
+      };
+    });
 
     res.json(transformedProducts);
   } catch (err: any) {
@@ -297,14 +305,21 @@ router.get("/:id", async (req: Request, res: Response): Promise<void> => {
     })
       .populate("category", "name")
       .populate("vendor", "name mobile address")
-      .lean()) as PopulatedProduct;
+      .lean()) as any;
 
     if (!product) {
       res.status(404).json({ msg: "Product not found" });
       return;
     }
+    // Calculate average rating from ratings array
+    let avgRating = 0;
+    if (product.ratings && product.ratings.length > 0) {
+      avgRating =
+        product.ratings.reduce((sum: number, r: any) => sum + r.value, 0) /
+        product.ratings.length;
+    }
 
-    const transformedProduct: TransformedProduct = {
+    const transformedProduct: any = {
       id: product._id.toString(),
       name: product.name,
       price: formatPrice(product.price),
@@ -338,7 +353,8 @@ router.get("/:id", async (req: Request, res: Response): Promise<void> => {
             mobile: "N/A",
             address: "N/A",
           },
-      rating: product.rating,
+      rating: avgRating,
+      boughtBy: product.ratings ? product.ratings.length : 0,
       featured: product.featured,
       stock: product.stock,
       discount: product.discount
@@ -971,7 +987,7 @@ router.get(
   }
 );
 
-// Rate a product (only for users who have bought it)
+// POST /product/:id/rate
 router.post(
   "/product/:id/rate",
   auth as RequestHandler,
@@ -983,7 +999,7 @@ router.post(
       }
 
       const { rating } = req.body;
-      if (!rating || typeof rating !== "number" || rating < 0 || rating > 5) {
+      if (typeof rating !== "number" || rating < 0 || rating > 5) {
         res
           .status(400)
           .json({ msg: "Invalid rating. Must be a number between 0 and 5" });
@@ -998,7 +1014,7 @@ router.post(
 
       // Check if user has bought this product
       const order = await Order.findOne({
-        user: req.user.id,
+        user: req.user?.id,
         items: {
           $elemMatch: {
             product: product._id,
@@ -1014,20 +1030,34 @@ router.post(
         return;
       }
 
-      // Update the rating
-      const currentRating = product.rating || 0;
-      const totalRatings = product.boughtBy;
-      const newRating =
-        (currentRating * totalRatings + rating) / (totalRatings + 1);
-
-      product.rating = newRating;
-      product.boughtBy = totalRatings + 1;
+      // Update or add the user's rating
+      let updated = false;
+      if (!product.ratings) product.ratings = [];
+      for (let r of product.ratings) {
+        if (r.user.toString() === req.user?.id) {
+          r.value = rating;
+          updated = true;
+          break;
+        }
+      }
+      if (!updated) {
+        product.ratings.push({
+          user: new mongoose.Types.ObjectId(req.user?.id),
+          value: rating,
+        });
+      }
+      // Recalculate average
+      const avgRating =
+        product.ratings.reduce((sum, r) => sum + r.value, 0) /
+        product.ratings.length;
+      product.rating = avgRating;
+      product.boughtBy = product.ratings.length;
       await product.save();
 
       res.json({
         msg: "Rating updated successfully",
-        newRating: newRating,
-        totalRatings: totalRatings + 1,
+        newRating: avgRating,
+        totalRatings: product.ratings.length,
       });
     } catch (err: any) {
       console.error(err.message);

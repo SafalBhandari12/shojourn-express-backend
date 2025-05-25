@@ -44,6 +44,26 @@ const withAuth = (handler: RequestHandler): RequestHandler => {
   };
 };
 
+// Utility function to check for plain object (not ObjectId or serialized ObjectId)
+function isPlainObject(obj: any) {
+  return (
+    obj &&
+    typeof obj === "object" &&
+    !("generationTime" in obj && Object.keys(obj).length === 1) &&
+    !(obj instanceof mongoose.Types.ObjectId)
+  );
+}
+
+// Utility function to check for a real product object (not ObjectId or serialized ObjectId)
+function isProductWithRatings(obj: any): obj is { ratings: any[] } {
+  return (
+    obj &&
+    typeof obj === "object" &&
+    Array.isArray(obj.ratings) &&
+    Object.keys(obj).length > 1 // must have more than just generationTime
+  );
+}
+
 // Create new order
 router.post(
   "/",
@@ -136,7 +156,48 @@ router.get(
       const orders = await Order.find({ user: req.user?.id })
         .populate("items.product")
         .sort({ createdAt: -1 });
-      res.json(orders);
+
+      const ordersWithRatings = await Promise.all(
+        orders.map(async (order) => {
+          const userId = req.user?.id;
+          const itemsWithRatings = await Promise.all(
+            order.items.map(async (item) => {
+              let userRating = null;
+
+              if (
+                item.product &&
+                isProductWithRatings(item.product) &&
+                userId
+              ) {
+                const found = item.product.ratings.find(
+                  (r) => r.user.toString() === userId
+                );
+                userRating = found ? found.value : null;
+              }
+
+              return {
+                product: item.product,
+                quantity: item.quantity,
+                price: item.price,
+                vendor: item.vendor,
+                userRating,
+              };
+            })
+          );
+
+          return {
+            status: order.status,
+            items: itemsWithRatings,
+            totalAmount: order.totalAmount,
+            shippingAddress: order.shippingAddress,
+            paymentMethod: order.paymentMethod,
+            createdAt: order.createdAt,
+            updatedAt: order.updatedAt,
+          };
+        })
+      );
+
+      res.json(ordersWithRatings);
     } catch (error) {
       console.error("Get user orders error:", error);
       res.status(500).json({ error: "Error fetching orders" });

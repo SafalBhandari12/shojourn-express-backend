@@ -58,6 +58,42 @@ const upload = multer({
   },
 });
 
+// Middleware to parse FormData fields
+const parseFormDataFields = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    // Parse discount if it exists and is a string
+    if (req.body.discount && typeof req.body.discount === "string") {
+      try {
+        req.body.discount = JSON.parse(req.body.discount);
+      } catch (e) {
+        console.error("Error parsing discount:", e);
+        req.body.discount = undefined;
+      }
+    }
+
+    // Parse any other JSON string fields if needed
+    const jsonFields = ["category", "vendor"];
+    jsonFields.forEach((field) => {
+      if (req.body[field] && typeof req.body[field] === "string") {
+        try {
+          req.body[field] = JSON.parse(req.body[field]);
+        } catch (e) {
+          console.error(`Error parsing ${field}:`, e);
+        }
+      }
+    });
+
+    next();
+  } catch (error) {
+    console.error("Error in parseFormDataFields middleware:", error);
+    next(error);
+  }
+};
+
 // Define transformed product type for response
 interface TransformedProduct {
   id: string;
@@ -325,6 +361,7 @@ router.post(
   "/",
   [auth, vendorMiddleware] as RequestHandler[],
   upload.array("images", 5),
+  parseFormDataFields,
   withAuth(async (req: RequestWithFiles, res: Response) => {
     try {
       if (!req.user) {
@@ -448,6 +485,7 @@ router.put(
   "/product/:id",
   [auth, vendorMiddleware] as RequestHandler[],
   upload.array("images", 5),
+  parseFormDataFields,
   withAuth(async (req: RequestWithFiles, res: Response) => {
     try {
       if (!req.user) {

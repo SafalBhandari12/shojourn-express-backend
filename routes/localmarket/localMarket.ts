@@ -179,9 +179,8 @@ const getFullUrl = (req: Request, filename: string): string => {
 };
 
 const formatPrice = (price: number): string => {
-  return (
-    "₹" +
-    new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(price)
+  return new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(
+    price
   );
 };
 
@@ -243,7 +242,7 @@ router.get("/", async (req: Request, res: Response): Promise<void> => {
       return {
         id: product._id.toString(),
         name: product.name,
-        price: formatPrice(product.price),
+        price: product.price,
         description: product.description,
         detailedDescription: product.detailedDescription,
         origin: product.origin,
@@ -322,7 +321,7 @@ router.get("/:id", async (req: Request, res: Response): Promise<void> => {
     const transformedProduct: any = {
       id: product._id.toString(),
       name: product.name,
-      price: formatPrice(product.price),
+      price: product.price,
       description: product.description,
       detailedDescription: product.detailedDescription,
       origin: product.origin,
@@ -860,7 +859,7 @@ router.get(
       const transformedProducts = products.map((product: any) => ({
         id: product._id.toString(),
         name: product.name,
-        price: formatPrice(product.price),
+        price: product.price,
         description: product.description,
         detailedDescription: product.detailedDescription,
         origin: product.origin,
@@ -940,7 +939,7 @@ router.get(
         acc[vendorId].products.push({
           id: product._id.toString(),
           name: product.name,
-          price: formatPrice(product.price),
+          price: product.price,
           description: product.description,
           detailedDescription: product.detailedDescription,
           origin: product.origin,

@@ -50,7 +50,13 @@ const storage: StorageEngine = new GridFsStorage({
   },
 }) as unknown as StorageEngine;
 
-const upload = multer({ storage });
+// Configure multer with specific field names
+const upload = multer({
+  storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+  },
+});
 
 // Define transformed product type for response
 interface TransformedProduct {
@@ -84,6 +90,22 @@ interface TransformedProduct {
     validUntil: Date;
     isActive: boolean;
   };
+}
+
+// Define discount type
+interface Discount {
+  percentage: number;
+  validFrom: Date;
+  validUntil: Date;
+  isActive: boolean;
+}
+
+// Define raw discount type (what we receive from the client)
+interface RawDiscount {
+  percentage: string | number;
+  validFrom: string | Date;
+  validUntil: string | Date;
+  isActive?: boolean;
 }
 
 // Define type for populated product
@@ -352,6 +374,50 @@ router.post(
         imagePath = req.files["images"][0].filename;
       }
 
+      // Handle discount object
+      let discountObj: Discount | undefined = undefined;
+      if (discount) {
+        try {
+          let rawDiscount: RawDiscount;
+          if (typeof discount === "string") {
+            rawDiscount = JSON.parse(discount);
+          } else if (typeof discount === "object") {
+            rawDiscount = discount as RawDiscount;
+          } else {
+            throw new Error("Invalid discount format");
+          }
+
+          // Validate discount data
+          if (
+            !rawDiscount.percentage ||
+            isNaN(Number(rawDiscount.percentage))
+          ) {
+            throw new Error("Invalid discount percentage");
+          }
+
+          const validFrom = new Date(rawDiscount.validFrom);
+          const validUntil = new Date(rawDiscount.validUntil);
+
+          if (isNaN(validFrom.getTime()) || isNaN(validUntil.getTime())) {
+            throw new Error("Invalid discount dates");
+          }
+
+          discountObj = {
+            percentage: Number(rawDiscount.percentage),
+            validFrom,
+            validUntil,
+            isActive: true,
+          };
+        } catch (error) {
+          console.error("Error parsing discount:", error);
+          res.status(400).json({
+            msg: "Invalid discount format",
+            error: error instanceof Error ? error.message : "Unknown error",
+          });
+          return;
+        }
+      }
+
       const newProduct = new LocalMarketProduct({
         name,
         description,
@@ -365,14 +431,7 @@ router.post(
         category: category ? new mongoose.Types.ObjectId(category) : undefined,
         vendor: req.user.id,
         stock: Number(stock),
-        discount: discount
-          ? {
-              percentage: Number(discount.percentage),
-              validFrom: new Date(discount.validFrom),
-              validUntil: new Date(discount.validUntil),
-              isActive: true,
-            }
-          : undefined,
+        discount: discountObj,
       });
 
       const savedProduct = await newProduct.save();
@@ -431,17 +490,42 @@ router.put(
       // Handle discount object
       if (discount) {
         try {
-          const discountObj =
-            typeof discount === "string" ? JSON.parse(discount) : discount;
+          let rawDiscount: RawDiscount;
+          if (typeof discount === "string") {
+            rawDiscount = JSON.parse(discount);
+          } else if (typeof discount === "object") {
+            rawDiscount = discount as RawDiscount;
+          } else {
+            throw new Error("Invalid discount format");
+          }
+
+          // Validate discount data
+          if (
+            !rawDiscount.percentage ||
+            isNaN(Number(rawDiscount.percentage))
+          ) {
+            throw new Error("Invalid discount percentage");
+          }
+
+          const validFrom = new Date(rawDiscount.validFrom);
+          const validUntil = new Date(rawDiscount.validUntil);
+
+          if (isNaN(validFrom.getTime()) || isNaN(validUntil.getTime())) {
+            throw new Error("Invalid discount dates");
+          }
+
           product.discount = {
-            percentage: Number(discountObj.percentage),
-            validFrom: new Date(discountObj.validFrom),
-            validUntil: new Date(discountObj.validUntil),
+            percentage: Number(rawDiscount.percentage),
+            validFrom,
+            validUntil,
             isActive: true,
           };
         } catch (error) {
           console.error("Error parsing discount:", error);
-          res.status(400).json({ msg: "Invalid discount format" });
+          res.status(400).json({
+            msg: "Invalid discount format",
+            error: error instanceof Error ? error.message : "Unknown error",
+          });
           return;
         }
       }
@@ -452,7 +536,7 @@ router.put(
           res.status(400).json({ msg: "Invalid category provided" });
           return;
         }
-        product.category = new Types.ObjectId(category);
+        product.category = new mongoose.Types.ObjectId(category);
       }
 
       if (name) product.name = name;

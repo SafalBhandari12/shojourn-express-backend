@@ -27,8 +27,15 @@ export interface IAdventure extends Document {
     percentage: number;
     validFrom: Date;
     validUntil: Date;
+    originalPrice: number;
   };
-  images: string[];
+  seatAvailability: {
+    [key: string]: {
+      totalSeats: number;
+      availableSeats: number;
+      price?: number;
+    };
+  };
   isActive: boolean;
   bookedBy: number;
   schedule: {
@@ -89,8 +96,12 @@ const AdventureSchema = new Schema<IAdventure>(
       percentage: { type: Number, min: 0, max: 100, default: 0 },
       validFrom: { type: Date },
       validUntil: { type: Date },
+      originalPrice: { type: Number },
     },
-    images: [{ type: String }],
+    seatAvailability: {
+      type: Object,
+      default: {},
+    },
     isActive: {
       type: Boolean,
       default: true,
@@ -115,6 +126,50 @@ AdventureSchema.index({ vendor: 1 });
 AdventureSchema.index({ "discount.isActive": 1 });
 AdventureSchema.index({ location: 1 });
 AdventureSchema.index({ difficulty: 1 });
+AdventureSchema.index({ "discount.validUntil": 1 });
+
+// Middleware to automatically update discount status
+AdventureSchema.pre("save", function (next) {
+  if (this.discount && this.discount.validUntil) {
+    this.discount.isActive = new Date() <= this.discount.validUntil;
+  }
+  next();
+});
+
+// Method to calculate discounted price
+AdventureSchema.methods.getDiscountedPrice = function (day: string): number {
+  if (!this.discount.isActive) {
+    return this.seatAvailability[day]?.price || this.price;
+  }
+
+  const basePrice = this.seatAvailability[day]?.price || this.price;
+  const discountAmount = (basePrice * this.discount.percentage) / 100;
+  return basePrice - discountAmount;
+};
+
+// Method to check seat availability
+AdventureSchema.methods.checkSeatAvailability = function (
+  day: string,
+  quantity: number
+): boolean {
+  const dayAvailability = this.seatAvailability[day];
+  if (!dayAvailability) return false;
+  return dayAvailability.availableSeats >= quantity;
+};
+
+// Method to update seat availability
+AdventureSchema.methods.updateSeatAvailability = function (
+  day: string,
+  quantity: number
+): boolean {
+  const dayAvailability = this.seatAvailability[day];
+  if (!dayAvailability || dayAvailability.availableSeats < quantity)
+    return false;
+
+  dayAvailability.availableSeats -= quantity;
+  this.seatAvailability[day] = dayAvailability;
+  return true;
+};
 
 AdventureSchema.virtual("id").get(function (this: IAdventure) {
   return this._id.toHexString();

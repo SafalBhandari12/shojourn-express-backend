@@ -17,8 +17,8 @@ const client = twilio(
 );
 
 function generateOTP(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-  // return "000000";
+  // return Math.floor(100000 + Math.random() * 900000).toString();
+  return "000000";
 }
 
 // POST /api/auth/mobile - For login OTP generation
@@ -39,11 +39,11 @@ router.post("/mobile", async (req: Request, res: Response): Promise<void> => {
       user.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
       await user.save();
 
-      await client.messages.create({
-        body: `Your login verification code is: ${otp}`,
-        from: process.env.TWILIO_PHONE_NUMBER as string,
-        to: normalizedMobile,
-      });
+      // await client.messages.create({
+      //   body: `Your login verification code is: ${otp}`,
+      //   from: process.env.TWILIO_PHONE_NUMBER as string,
+      //   to: normalizedMobile,
+      // });
       res.status(200).json({ msg: "OTP sent to your mobile" });
     } else {
       res.status(404).json({

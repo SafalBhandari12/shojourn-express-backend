@@ -7,7 +7,7 @@ import { Types } from "mongoose";
 interface AuthRequest extends Request {
   user?: {
     id: string | Types.ObjectId;
-    role: "client" | "vendor" | "admin";
+    role: "user" | "vendor" | "adventurer" | "admin";
   };
 }
 
@@ -24,12 +24,14 @@ export const auth = async (
       return;
     }
 
-    if (!process.env.JWT_SECRET) {
-      throw new Error("JWT_SECRET is not defined");
-    }
-
-    const decoded = jwt.verify(token, process.env.JWT_SECRET) as {
-      user: { id: string; role: "client" | "vendor" | "admin" };
+    const decoded = jwt.verify(
+      token,
+      process.env.JWT_SECRET || "your-secret-key"
+    ) as {
+      user: {
+        id: string;
+        role: "user" | "vendor" | "adventurer" | "admin";
+      };
     };
 
     const user = await User.findById(decoded.user.id);
@@ -38,13 +40,14 @@ export const auth = async (
       return;
     }
 
-    req.user = decoded.user;
+    req.user = {
+      id: user._id,
+      role: user.role,
+    };
+
     next();
   } catch (error) {
-    if (error instanceof jwt.JsonWebTokenError) {
-      res.status(401).json({ error: "Invalid token" });
-    } else {
-      res.status(500).json({ error: "Internal server error" });
-    }
+    console.error("Auth middleware error:", error);
+    res.status(401).json({ error: "Invalid token" });
   }
 };

@@ -3,23 +3,23 @@ import mongoose, { Document, Schema, Types } from "mongoose";
 export interface IAdventure extends Document {
   name: string;
   description: string;
-  detailedDescription?: string;
+  detailedDescription: string;
   price: number;
-  image?: string;
-  multipleImages?: string[];
+  image: Types.ObjectId | null;
+  multipleImages: Types.ObjectId[];
   location: string;
   duration: string;
   difficulty: "Easy" | "Medium" | "Hard" | "Extreme";
-  ageRestriction?: {
+  ageRestriction: {
     minAge: number;
-    maxAge?: number;
+    maxAge: number;
   };
-  requirements?: string[];
+  requirements: string[];
   safetyInstructions: string;
   category: mongoose.Types.ObjectId;
-  rating?: number;
-  featured?: boolean;
-  vendor: mongoose.Types.ObjectId;
+  rating: number;
+  featured: boolean;
+  adventurer: mongoose.Types.ObjectId;
   maxParticipants: number;
   currentBookings: number;
   discount: {
@@ -33,7 +33,7 @@ export interface IAdventure extends Document {
     [key: string]: {
       totalSeats: number;
       availableSeats: number;
-      price?: number;
+      price: number;
     };
   };
   isActive: boolean;
@@ -43,18 +43,22 @@ export interface IAdventure extends Document {
     endTime: string;
     daysAvailable: string[];
   };
-  createdAt?: Date;
-  updatedAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+  ratings?: { user: Types.ObjectId; value: number }[];
+  imageUrl?: string | null;
+  multipleImageUrls?: string[];
+  totalRatings?: number;
 }
 
 const AdventureSchema = new Schema<IAdventure>(
   {
     name: { type: String, required: true },
     description: { type: String, required: true },
-    detailedDescription: String,
+    detailedDescription: { type: String, required: true },
     price: { type: Number, required: true, min: 0 },
-    image: String,
-    multipleImages: [String],
+    image: { type: Schema.Types.ObjectId, ref: "fs.files", default: null },
+    multipleImages: [{ type: Schema.Types.ObjectId, ref: "fs.files" }],
     location: { type: String, required: true },
     duration: { type: String, required: true },
     difficulty: {
@@ -64,9 +68,9 @@ const AdventureSchema = new Schema<IAdventure>(
     },
     ageRestriction: {
       minAge: { type: Number, required: true },
-      maxAge: Number,
+      maxAge: { type: Number, required: true },
     },
-    requirements: [String],
+    requirements: { type: [String], required: true },
     safetyInstructions: { type: String, required: true },
     category: {
       type: Schema.Types.ObjectId,
@@ -77,44 +81,60 @@ const AdventureSchema = new Schema<IAdventure>(
       type: Number,
       min: 0,
       max: 5,
-      select: false,
+      required: true,
       default: 0,
     },
     featured: {
       type: Boolean,
+      required: true,
       default: false,
     },
-    vendor: {
+    adventurer: {
       type: Schema.Types.ObjectId,
       ref: "User",
       required: true,
     },
     maxParticipants: { type: Number, required: true, min: 1 },
-    currentBookings: { type: Number, default: 0 },
+    currentBookings: { type: Number, required: true, default: 0 },
     discount: {
-      isActive: { type: Boolean, default: false },
-      percentage: { type: Number, min: 0, max: 100, default: 0 },
-      validFrom: { type: Date },
-      validUntil: { type: Date },
-      originalPrice: { type: Number },
+      isActive: { type: Boolean, required: true, default: false },
+      percentage: {
+        type: Number,
+        required: true,
+        min: 0,
+        max: 100,
+        default: 0,
+      },
+      validFrom: { type: Date, required: true },
+      validUntil: { type: Date, required: true },
+      originalPrice: { type: Number, required: true },
     },
     seatAvailability: {
       type: Object,
+      required: true,
       default: {},
     },
     isActive: {
       type: Boolean,
+      required: true,
       default: true,
     },
     bookedBy: {
       type: Number,
+      required: true,
       default: 0,
     },
     schedule: {
       startTime: { type: String, required: true },
       endTime: { type: String, required: true },
-      daysAvailable: [{ type: String, required: true }],
+      daysAvailable: { type: [String], required: true },
     },
+    ratings: [
+      {
+        user: { type: Schema.Types.ObjectId, ref: "User" },
+        value: { type: Number, min: 0, max: 5 },
+      },
+    ],
   },
   { timestamps: true }
 );
@@ -122,7 +142,7 @@ const AdventureSchema = new Schema<IAdventure>(
 // Create indexes
 AdventureSchema.index({ name: 1 });
 AdventureSchema.index({ category: 1 });
-AdventureSchema.index({ vendor: 1 });
+AdventureSchema.index({ adventurer: 1 });
 AdventureSchema.index({ "discount.isActive": 1 });
 AdventureSchema.index({ location: 1 });
 AdventureSchema.index({ difficulty: 1 });
@@ -173,6 +193,10 @@ AdventureSchema.methods.updateSeatAvailability = function (
 
 AdventureSchema.virtual("id").get(function (this: IAdventure) {
   return this._id.toHexString();
+});
+
+AdventureSchema.virtual("totalRatings").get(function (this: IAdventure) {
+  return this.ratings ? this.ratings.length : 0;
 });
 
 AdventureSchema.set("toJSON", { virtuals: true });

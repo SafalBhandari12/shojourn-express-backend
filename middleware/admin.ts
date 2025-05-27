@@ -6,7 +6,7 @@ import User from "../models/User";
 interface AuthRequest extends Request {
   user?: {
     id: string | Types.ObjectId;
-    role: "client" | "vendor" | "admin";
+    role: "user" | "vendor" | "adventurer" | "admin";
   };
 }
 

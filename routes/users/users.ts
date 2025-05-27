@@ -8,7 +8,7 @@ import { RequestWithFiles } from "../../types/express";
 const router = Router();
 
 interface UserRequestBody {
-  role?: "user" | "vendor" | "admin";
+  role?: "user" | "vendor" | "adventurer" | "admin";
 }
 
 // Get current user's information
@@ -79,7 +79,7 @@ router.patch(
     try {
       const { role } = req.body as UserRequestBody;
 
-      if (!role || !["user", "vendor", "admin"].includes(role)) {
+      if (!role || !["user", "vendor", "adventurer", "admin"].includes(role)) {
         res.status(400).json({ error: "Invalid role" });
         return;
       }

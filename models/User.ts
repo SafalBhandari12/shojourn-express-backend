@@ -6,7 +6,7 @@ import jwt from "jsonwebtoken";
 export interface IUser extends Document {
   name: string;
   mobile: string;
-  role: "user" | "vendor" | "admin";
+  role: "user" | "vendor" | "adventurer" | "admin";
   isVerified: boolean;
   otp?: string;
   otpExpires?: Date;
@@ -20,7 +20,7 @@ const UserSchema = new Schema<IUser>(
     mobile: { type: String, required: true, unique: true },
     role: {
       type: String,
-      enum: ["user", "vendor", "admin"],
+      enum: ["user", "vendor", "adventurer", "admin"],
       default: "user",
     },
     isVerified: { type: Boolean, default: false },

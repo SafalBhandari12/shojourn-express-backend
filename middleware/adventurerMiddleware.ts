@@ -9,7 +9,7 @@ interface AuthRequest extends Request {
   };
 }
 
-const vendorMiddleware = async (
+const adventurerMiddleware = async (
   req: AuthRequest,
   res: Response,
   next: NextFunction
@@ -26,18 +26,18 @@ const vendorMiddleware = async (
       return;
     }
 
-    if (user.role !== "vendor" && user.role !== "admin") {
+    if (user.role !== "adventurer" && user.role !== "admin") {
       res
         .status(403)
-        .json({ error: "Access denied. Vendor privileges required" });
+        .json({ error: "Access denied. Adventurer privileges required" });
       return;
     }
 
     next();
   } catch (error) {
-    console.error("Vendor middleware error:", error);
+    console.error("Adventurer middleware error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 };
 
-export default vendorMiddleware;
+export default adventurerMiddleware;

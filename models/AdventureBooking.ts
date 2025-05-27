@@ -8,12 +8,24 @@ export interface IAdventureBooking extends Document {
   totalPrice: number;
   status: "pending" | "confirmed" | "cancelled" | "completed";
   paymentStatus: "pending" | "paid" | "refunded";
+  paymentMethod: "card" | "cash";
+  paymentDetails?: {
+    cardNumber?: string;
+    cardHolderName?: string;
+    expiryDate?: string;
+    cvv?: string;
+  };
   participants: {
     name: string;
     age: number;
-    contactNumber: string;
+    gender: string;
+    emergencyContact: {
+      name: string;
+      relationship: string;
+      phone: string;
+    };
+    specialRequirements?: string;
   }[];
-  specialRequirements?: string;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -54,14 +66,30 @@ const AdventureBookingSchema = new Schema<IAdventureBooking>(
       enum: ["pending", "paid", "refunded"],
       default: "pending",
     },
+    paymentMethod: {
+      type: String,
+      enum: ["card", "cash"],
+      required: true,
+    },
+    paymentDetails: {
+      cardNumber: String,
+      cardHolderName: String,
+      expiryDate: String,
+      cvv: String,
+    },
     participants: [
       {
         name: { type: String, required: true },
         age: { type: Number, required: true },
-        contactNumber: { type: String, required: true },
+        gender: { type: String, required: true },
+        emergencyContact: {
+          name: { type: String, required: true },
+          relationship: { type: String, required: true },
+          phone: { type: String, required: true },
+        },
+        specialRequirements: String,
       },
     ],
-    specialRequirements: String,
   },
   { timestamps: true }
 );
@@ -72,6 +100,7 @@ AdventureBookingSchema.index({ user: 1 });
 AdventureBookingSchema.index({ bookingDate: 1 });
 AdventureBookingSchema.index({ status: 1 });
 AdventureBookingSchema.index({ paymentStatus: 1 });
+AdventureBookingSchema.index({ paymentMethod: 1 });
 
 AdventureBookingSchema.virtual("id").get(function (this: IAdventureBooking) {
   return this._id.toHexString();

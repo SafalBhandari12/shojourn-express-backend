@@ -1,0 +1,93 @@
+# API Endpoint and Authentication Rules
+
+## 1. Authentication Token Structure
+- NEVER modify the JWT token structure in auth middleware
+- Token payload must always match the structure used in User.generateAuthToken()
+- Current token structure: { id: string, role: string }
+- DO NOT wrap token payload in additional objects (e.g., { user: { id, role } })
+
+## 2. API Endpoint Modifications
+- DO NOT modify working API endpoints without explicit user request
+- If endpoint modification is requested:
+  - Keep the same request/response structure
+  - Maintain existing middleware order
+  - Preserve existing type definitions
+  - Document any changes made
+
+## 3. Type Safety Rules
+- NEVER change interface definitions without updating all related code
+- Maintain strict type checking for:
+  - Request objects
+  - Response objects
+  - Database models
+  - Middleware parameters
+
+## 4. Middleware Order
+- Preserve the exact order of middleware in routes
+- Common order: [auth, roleMiddleware, otherMiddleware]
+- DO NOT remove or reorder middleware without explicit request
+
+## 5. Database Operations
+- Maintain consistent ObjectId handling
+- Use proper type conversion for MongoDB IDs
+- Keep existing population chains in queries
+
+## 6. Error Handling
+- Maintain existing error response formats
+- Keep consistent HTTP status codes
+- Preserve error message structures
+
+## 7. Code Modification Guidelines
+- Before modifying any endpoint:
+  1. Document the current working state
+  2. Get explicit user approval for changes
+  3. Test the changes in isolation
+  4. Verify all related endpoints still work
+
+## 8. Vendor-Specific Rules
+- Preserve vendor authentication checks
+- Maintain vendor role verification
+- Keep vendor-specific middleware intact
+
+## 9. Order Management Rules
+- Maintain existing order status flow
+- Preserve order validation logic
+- Keep order-related middleware order
+
+## 10. General Guidelines
+- If it's working, don't fix it
+- Document any necessary changes
+- Test thoroughly before implementing
+- Get user approval for significant changes
+- Maintain backward compatibility
+
+## 11. Security Rules
+- Never modify authentication logic without explicit request
+- Keep existing security checks intact
+- Maintain role-based access control
+- Preserve existing permission checks
+
+## 12. Response Format Rules
+- Keep consistent response structures
+- Maintain existing error formats
+- Preserve success response patterns
+
+## 13. Database Query Rules
+- Maintain existing query structures
+- Keep population chains intact
+- Preserve sorting and filtering logic
+
+## 14. Type Definition Rules
+- Never modify existing interfaces without updating all implementations
+- Keep type definitions consistent across the codebase
+- Maintain strict type checking
+
+## 15. Testing Requirements
+- Test all changes in isolation
+- Verify related endpoints still work
+- Check authentication still functions
+- Validate role-based access
+- Test error handling
+- Verify response formats
+
+Remember: The primary goal is to maintain stability and prevent breaking changes. When in doubt, ask for explicit user approval before making any modifications to working code. 

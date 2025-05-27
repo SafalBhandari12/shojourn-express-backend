@@ -297,6 +297,11 @@ router.patch(
   [auth, vendorMiddleware] as RequestHandler[],
   async (req: RequestWithFiles, res: Response): Promise<void> => {
     try {
+      if (!req.user?.id) {
+        res.status(401).json({ error: "User ID not found" });
+        return;
+      }
+
       const { status } = req.body as OrderRequestBody;
       if (!status) {
         res.status(400).json({ error: "Status is required" });
@@ -304,14 +309,16 @@ router.patch(
       }
 
       const order = await Order.findById(req.params.id);
+
       if (!order) {
         res.status(404).json({ error: "Order not found" });
         return;
       }
 
       // Check if the vendor is associated with any items in the order
+      const vendorId = new mongoose.Types.ObjectId(req.user.id);
       const isVendorOfOrder = order.items.some(
-        (item) => item.vendor.toString() === req.user?.id
+        (item) => item.vendor.toString() === vendorId.toString()
       );
 
       if (!isVendorOfOrder) {
@@ -337,14 +344,20 @@ router.patch(
   auth,
   async (req: RequestWithFiles, res: Response): Promise<void> => {
     try {
+      if (!req.user?.id) {
+        res.status(401).json({ error: "User ID not found" });
+        return;
+      }
+
       const order = await Order.findById(req.params.id);
       if (!order) {
         res.status(404).json({ error: "Order not found" });
         return;
       }
 
-      if (order.user.toString() !== req.user?.id) {
-        res.status(403).json({ error: "Not authorized" });
+      const userId = new mongoose.Types.ObjectId(req.user.id);
+      if (order.user.toString() !== userId.toString()) {
+        res.status(403).json({ error: "Not authorized to cancel this order" });
         return;
       }
 

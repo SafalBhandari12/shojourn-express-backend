@@ -39,9 +39,8 @@ interface PopulatedProduct {
   name: string;
   description: string;
   price: number;
-  images: string[];
   stock: number;
-  category: string;
+  category: mongoose.Types.ObjectId;
   vendor: mongoose.Types.ObjectId;
   discount: {
     isActive: boolean;
@@ -50,8 +49,8 @@ interface PopulatedProduct {
     validUntil: Date;
   };
   boughtBy: number;
-  averageRating: number;
-  ratings: Array<{
+  rating: number;
+  ratings?: Array<{
     user: mongoose.Types.ObjectId;
     value: number;
   }>;
@@ -178,48 +177,70 @@ router.get(
   async (req: RequestWithFiles, res: Response): Promise<void> => {
     try {
       const orders = await Order.find({ user: req.user?.id })
-        .populate("items.product")
-        .sort({ createdAt: -1 });
+        .populate({
+          path: "items.product",
+          model: "LocalMarketProduct",
+          select:
+            "name description price stock category vendor discount boughtBy ratings rating",
+          populate: {
+            path: "ratings.user",
+            model: "User",
+            select: "_id",
+          },
+        })
+        .lean();
 
       const ordersWithRatings = await Promise.all(
         orders.map(async (order) => {
           const userId = req.user?.id;
           const itemsWithRatings = await Promise.all(
             order.items.map(async (item) => {
-              let userRating = null;
+              let userRating: number | null = null;
 
-              if (
-                item.product &&
-                isProductWithRatings(item.product) &&
-                userId
-              ) {
-                const found = item.product.ratings.find(
-                  (r) => r.user.toString() === userId
-                );
-                userRating = found ? found.value : null;
+              // Get the product with its ratings
+              const product = await LocalMarketProduct.findById(item.product)
+                .populate("ratings.user", "_id")
+                .lean();
+
+              if (product && Array.isArray(product.ratings) && userId) {
+                // Defensive: handle both ObjectId and populated user
+                const userRatingObj = product.ratings.find((r) => {
+                  if (r.user && typeof r.user === "object") {
+                    // Populated user object
+                    if ("_id" in r.user && r.user._id) {
+                      return (
+                        (
+                          r.user._id as { toString: () => string }
+                        ).toString() === userId.toString()
+                      );
+                    }
+                    // Mongoose ObjectId
+                    if ("toString" in r.user) {
+                      return (
+                        (r.user as { toString: () => string }).toString() ===
+                        userId.toString()
+                      );
+                    }
+                  }
+                  // If r.user is a string or undefined
+                  return (r.user as any)?.toString() === userId.toString();
+                });
+                userRating = userRatingObj ? userRatingObj.value : null;
               }
 
-              // Create a clean product object without ratings
-              const cleanProduct = item.product
+              // Create a clean product object
+              const cleanProduct = product
                 ? {
-                    _id: (item.product as unknown as PopulatedProduct)._id,
-                    name: (item.product as unknown as PopulatedProduct).name,
-                    description: (item.product as unknown as PopulatedProduct)
-                      .description,
-                    price: (item.product as unknown as PopulatedProduct).price,
-                    images: (item.product as unknown as PopulatedProduct)
-                      .images,
-                    stock: (item.product as unknown as PopulatedProduct).stock,
-                    category: (item.product as unknown as PopulatedProduct)
-                      .category,
-                    vendor: (item.product as unknown as PopulatedProduct)
-                      .vendor,
-                    discount: (item.product as unknown as PopulatedProduct)
-                      .discount,
-                    boughtBy: (item.product as unknown as PopulatedProduct)
-                      .boughtBy,
-                    averageRating: (item.product as unknown as PopulatedProduct)
-                      .averageRating,
+                    _id: product._id,
+                    name: product.name,
+                    description: product.description,
+                    price: product.price,
+                    stock: product.stock,
+                    category: product.category,
+                    vendor: product.vendor,
+                    discount: product.discount,
+                    boughtBy: product.boughtBy,
+                    rating: product.rating,
                   }
                 : null;
 

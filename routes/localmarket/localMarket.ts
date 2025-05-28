@@ -992,10 +992,11 @@ router.post(
   auth as RequestHandler,
   async (req: Request, res: Response): Promise<void> => {
     try {
-      if (!req.user) {
+      if (!req.user || !req.user.id) {
         res.status(401).json({ msg: "Not authenticated" });
         return;
       }
+      const userIdStr = req.user.id.toString();
 
       const { rating } = req.body;
       if (typeof rating !== "number" || rating < 0 || rating > 5) {
@@ -1029,29 +1030,42 @@ router.post(
         return;
       }
 
-      // Update or add the user's rating
-      let updated = false;
-      if (!product.ratings) product.ratings = [];
-      for (let r of product.ratings) {
-        if (r.user.toString() === req.user?.id) {
-          r.value = rating;
-          updated = true;
-          break;
-        }
+      // Ensure ratings array is initialized
+      if (!product.ratings) {
+        product.ratings = [];
       }
-      if (!updated) {
-        product.ratings.push({
-          user: new mongoose.Types.ObjectId(req.user?.id),
-          value: rating,
-        });
-      }
-      // Recalculate average
+
+      // Remove all previous ratings by this user (if any)
+      product.ratings = product.ratings.filter(
+        (r) => r.user && r.user.toString() !== userIdStr
+      );
+
+      // Add the new rating
+      product.ratings.push({
+        user: new mongoose.Types.ObjectId(userIdStr),
+        value: rating,
+      });
+
+      // Calculate average rating
       const avgRating =
         product.ratings.reduce((sum, r) => sum + r.value, 0) /
         product.ratings.length;
+
+      // Update product with new rating and average
       product.rating = avgRating;
       product.boughtBy = product.ratings.length;
+
+      // Save the updated product
       await product.save();
+
+      // Log the rating update for debugging
+      console.log("Rating Update:", {
+        productId: product._id,
+        userId: req.user?.id,
+        newRating: rating,
+        totalRatings: product.ratings.length,
+        averageRating: avgRating,
+      });
 
       res.json({
         msg: "Rating updated successfully",

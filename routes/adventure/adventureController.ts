@@ -282,20 +282,29 @@ export const updateAdventure = async (req: AuthRequest, res: Response) => {
 // Delete an adventure
 export const deleteAdventure = async (req: AuthRequest, res: Response) => {
   try {
-    // Check if user is an adventurer
+    // Check if user is an adventurer or admin
     if (req.user?.role !== "adventurer" && req.user?.role !== "admin") {
       return res
         .status(403)
-        .json({ message: "Only adventurers can delete adventures" });
+        .json({ message: "Only adventurers or admins can delete adventures" });
     }
 
-    const adventure = await Adventure.findOne({
-      _id: req.params.id,
-      adventurer: req.user?.id,
-    });
+    // Find the adventure
+    const adventure = await Adventure.findById(req.params.id);
     if (!adventure) {
       return res.status(404).json({ message: "Adventure not found" });
     }
+
+    // Check if user is admin or the adventure owner
+    const isAdmin = req.user.role === "admin";
+    const isOwner = adventure.adventurer.toString() === req.user.id?.toString();
+
+    if (!isAdmin && !isOwner) {
+      return res
+        .status(403)
+        .json({ message: "Not authorized to delete this adventure" });
+    }
+
     // Delete associated images from GridFS
     const bucket = new GridFSBucket(mongoose.connection.db, {
       bucketName: "uploads",

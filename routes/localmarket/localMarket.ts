@@ -174,7 +174,9 @@ interface PopulatedProduct
 
 // Helper functions
 const getFullUrl = (req: Request, filename: string): string => {
-  const baseUrl = req.protocol + "://" + req.get("host");
+  const protocol =
+    process.env.NODE_ENV === "production" ? "https" : req.protocol;
+  const baseUrl = `${protocol}://${req.get("host")}`;
   return `${baseUrl}/api/images/${filename}`;
 };
 

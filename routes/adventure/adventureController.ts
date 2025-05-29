@@ -36,7 +36,6 @@ function getFullImageUrl(req: Request, fileId: string) {
   const protocol =
     process.env.NODE_ENV === "production" ? "https" : req.protocol; // Use https in production
   const baseUrl = `${protocol}://${req.get("host")}`;
-  console.log(baseUrl);
   return `${baseUrl}/api/adventures/images/${fileId}`;
 }
 

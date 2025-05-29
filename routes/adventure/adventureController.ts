@@ -528,6 +528,7 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
     // Update seat availability
     adventure.seatAvailability[bookingDay].availableSeats -=
       numberOfParticipants;
+    adventure.markModified("seatAvailability");
     await adventure.save();
 
     res.status(201).json(booking);
@@ -987,6 +988,7 @@ export const cancelBooking = async (req: AuthRequest, res: Response) => {
       if (adventure.seatAvailability[bookingDay]) {
         adventure.seatAvailability[bookingDay].availableSeats +=
           booking.numberOfParticipants;
+        adventure.markModified("seatAvailability");
         await adventure.save();
       }
     }

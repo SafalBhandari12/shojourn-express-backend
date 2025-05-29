@@ -33,7 +33,10 @@ async function uploadToGridFS(
 }
 
 function getFullImageUrl(req: Request, fileId: string) {
-  const baseUrl = `${req.protocol}://${req.get("host")}`;
+  const protocol =
+    process.env.NODE_ENV === "production" ? "https" : req.protocol; // Use https in production
+  const baseUrl = `${protocol}://${req.get("host")}`;
+  console.log(baseUrl);
   return `${baseUrl}/api/adventures/images/${fileId}`;
 }
 

@@ -92,11 +92,11 @@ router.post("/register", async (req: Request, res: Response): Promise<void> => {
       await pendingUser.save();
     }
 
-    await client.messages.create({
-      body: `Your registration verification code is: ${otp}`,
-      from: process.env.TWILIO_PHONE_NUMBER as string,
-      to: mobile,
-    });
+    // await client.messages.create({
+    //   body: `Your registration verification code is: ${otp}`,
+    //   from: process.env.TWILIO_PHONE_NUMBER as string,
+    //   to: mobile,
+    // });
 
     res
       .status(201)

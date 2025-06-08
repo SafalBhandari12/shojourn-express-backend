@@ -1,13 +1,13 @@
 // Migrated to TypeScript
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
-import User from "../models/User";
+import User, { IUser } from "../models/User";
 import { Types } from "mongoose";
 
 interface AuthRequest extends Request {
   user?: {
     id: string | Types.ObjectId;
-    role: "user" | "vendor" | "adventurer" | "admin";
+    role: "user" | "vendor" | "adventurer" | "admin" | "renter";
   };
 }
 
@@ -30,7 +30,7 @@ export const auth = async (
     ) as {
       user: {
         id: string;
-        role: "user" | "vendor" | "adventurer" | "admin";
+        role: IUser["role"];
       };
     };
 

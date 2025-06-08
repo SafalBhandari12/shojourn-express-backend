@@ -54,6 +54,7 @@ import localMarketProductRoutes from "./routes/localmarket/localMarket";
 import orderRoutes from "./routes/localmarket/orders/orders";
 import userRoutes from "./routes/users/users";
 import adventureRoutes from "./routes/adventure";
+import rentalRoutes from "./routes/rental";
 
 // Register routes
 app.use("/api/auth", authRoutes);
@@ -61,6 +62,7 @@ app.use("/api/categories", categoryRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/adventures", adventureRoutes);
+app.use("/api/rentals", rentalRoutes);
 
 // Image handling route - must be before the localmarket routes
 app.use(

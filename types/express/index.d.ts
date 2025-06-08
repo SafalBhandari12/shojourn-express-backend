@@ -6,7 +6,7 @@ declare global {
     interface Request {
       user?: {
         id: string | Types.ObjectId;
-        role: "user" | "vendor" | "adventurer" | "admin";
+        role: "user" | "vendor" | "adventurer" | "admin" | "renter";
       };
       files?: {
         [fieldname: string]: Express.Multer.File[];
@@ -51,7 +51,7 @@ export interface RequestWithFiles extends ExpressRequest {
 export interface RequestWithUser extends ExpressRequest {
   user: {
     id: string | Types.ObjectId;
-    role: "user" | "vendor" | "adventurer" | "admin";
+    role: "user" | "vendor" | "adventurer" | "admin" | "renter";
   };
 }
 

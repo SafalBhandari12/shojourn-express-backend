@@ -203,7 +203,7 @@ export const createRental = async (req: AuthRequest, res: Response) => {
       category,
       location,
       features,
-      availability,
+      totalSeats,
       rentalType,
       make,
       model,
@@ -229,7 +229,7 @@ export const createRental = async (req: AuthRequest, res: Response) => {
       "category",
       "location",
       "features",
-      "availability",
+      "totalSeats",
       "rentalType",
       "make",
       "model",
@@ -261,9 +261,6 @@ export const createRental = async (req: AuthRequest, res: Response) => {
         details: "Please upload all required documents and images",
       });
     }
-
-    // Log the files for debugging
-    console.log("Files received:", Object.keys(req.files));
 
     // Get the files from req.files
     const files = req.files as { [key: string]: Express.Multer.File[] };
@@ -393,49 +390,15 @@ export const createRental = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    // Validate availability (new object format)
-    let parsedAvailability: Record<
-      string,
-      { totalSeats: number; availableSeats: number; price: number }
-    >;
-    try {
-      if (typeof availability === "string") {
-        parsedAvailability = JSON.parse(availability);
-      } else {
-        parsedAvailability = availability;
-      }
-      if (
-        !parsedAvailability ||
-        typeof parsedAvailability !== "object" ||
-        Array.isArray(parsedAvailability) ||
-        Object.keys(parsedAvailability).length === 0
-      ) {
-        throw new Error("Availability must be a non-empty object");
-      }
-      // Validate each date entry
-      for (const [date, slot] of Object.entries(parsedAvailability)) {
-        if (!slot || typeof slot !== "object") {
-          throw new Error(`Invalid slot for date ${date}`);
-        }
-        if (
-          typeof slot.totalSeats !== "number" ||
-          typeof slot.availableSeats !== "number" ||
-          typeof slot.price !== "number"
-        ) {
-          throw new Error(`Invalid slot values for date ${date}`);
-        }
-        // Optionally, validate date format
-        if (isNaN(Date.parse(date))) {
-          throw new Error(`Invalid date key: ${date}`);
-        }
-      }
-    } catch (error) {
+    // Validate totalSeats
+    if (
+      isNaN(Number(totalSeats)) ||
+      Number(totalSeats) < 1 ||
+      Number(totalSeats) > 10
+    ) {
       return res.status(400).json({
-        message: "Invalid availability format",
-        details:
-          error instanceof Error
-            ? error.message
-            : "Availability must be a valid JSON object with date keys",
+        message: "Invalid total seats",
+        details: "Total seats must be between 1 and 10",
       });
     }
 
@@ -522,7 +485,6 @@ export const createRental = async (req: AuthRequest, res: Response) => {
       expiryDate: string;
     };
     try {
-      console.log("RAW insurance:", insurance);
       if (typeof insurance === "string") {
         parsedInsurance = JSON.parse(insurance);
       } else {
@@ -553,7 +515,6 @@ export const createRental = async (req: AuthRequest, res: Response) => {
     let parsedSpecifications: any = undefined;
     if (specifications) {
       try {
-        console.log("RAW specifications:", specifications);
         if (typeof specifications === "string") {
           parsedSpecifications = JSON.parse(specifications);
         } else {
@@ -581,7 +542,6 @@ export const createRental = async (req: AuthRequest, res: Response) => {
     // Validate pricing
     let parsedPricing: any;
     try {
-      console.log("RAW pricing:", pricing);
       if (typeof pricing === "string") {
         parsedPricing = JSON.parse(pricing);
       } else {
@@ -613,7 +573,6 @@ export const createRental = async (req: AuthRequest, res: Response) => {
     // Validate location details
     let parsedLocationDetails: any;
     try {
-      console.log("RAW locationDetails:", locationDetails);
       if (typeof locationDetails === "string") {
         parsedLocationDetails = JSON.parse(locationDetails);
       } else {
@@ -708,9 +667,9 @@ export const createRental = async (req: AuthRequest, res: Response) => {
       category,
       location: location.trim(),
       features: parsedFeatures,
-      availability: parsedAvailability,
+      totalSeats: Number(totalSeats),
       rentalType,
-      renter: new mongoose.Types.ObjectId(req.user?.id), // Ensure we create a proper ObjectId
+      renter: new mongoose.Types.ObjectId(req.user?.id),
       image: imageId,
       images: multipleImageIds,
       make: make.trim(),
@@ -729,35 +688,13 @@ export const createRental = async (req: AuthRequest, res: Response) => {
       pricing: parsedPricing,
       locationDetails: parsedLocationDetails,
       status: "available",
+      isListed: true,
     });
 
     await rental.save();
 
     res.status(201).json(addImageUrlsToRental(rental, req));
   } catch (error: any) {
-    // Log the full error for debugging
-    console.error("Error creating rental:", error);
-
-    // Handle MongoDB validation errors
-    if (error.name === "ValidationError") {
-      const validationErrors = Object.values(error.errors).map(
-        (err: any) => err.message
-      );
-      return res.status(400).json({
-        message: "Validation error",
-        details: validationErrors,
-      });
-    }
-
-    // Handle MongoDB duplicate key errors
-    if (error.code === 11000) {
-      return res.status(400).json({
-        message: "Duplicate entry",
-        details: "A rental with this title already exists",
-      });
-    }
-
-    // Handle other errors with more details
     res.status(500).json({
       message: "Error creating rental",
       details: error.message || "An unexpected error occurred",
@@ -790,11 +727,7 @@ export const updateRental = async (req: AuthRequest, res: Response) => {
     // Check if user is the renter or admin
     const userId = req.user?.id?.toString();
     const renterId = rental.renter.toString();
-    console.log("Debug - User ID:", userId);
-    console.log("Debug - Renter ID:", renterId);
-    console.log("Debug - User Role:", req.user?.role);
 
-    // Fix: Check if user is either the renter OR an admin
     if (renterId !== userId && req.user?.role !== "admin") {
       return res.status(403).json({
         message: "Not authorized",
@@ -805,9 +738,6 @@ export const updateRental = async (req: AuthRequest, res: Response) => {
     // Parse JSON strings if they exist
     const features = req.body.features
       ? JSON.parse(req.body.features)
-      : undefined;
-    const availability = req.body.availability
-      ? JSON.parse(req.body.availability)
       : undefined;
     const specifications = req.body.specifications
       ? JSON.parse(req.body.specifications)
@@ -828,7 +758,6 @@ export const updateRental = async (req: AuthRequest, res: Response) => {
       category: req.body.category,
       location: req.body.location?.trim(),
       features,
-      availability,
       rentalType: req.body.rentalType,
       make: req.body.make?.trim(),
       model: req.body.model?.trim(),
@@ -845,14 +774,8 @@ export const updateRental = async (req: AuthRequest, res: Response) => {
       pricing,
       locationDetails,
       status: req.body.status,
+      isListed: req.body.isListed,
     };
-
-    // Remove undefined fields
-    Object.keys(updateFields).forEach((key) => {
-      if (updateFields[key as keyof typeof updateFields] === undefined) {
-        delete updateFields[key as keyof typeof updateFields];
-      }
-    });
 
     // Handle image uploads
     if (req.files) {
@@ -906,31 +829,6 @@ export const updateRental = async (req: AuthRequest, res: Response) => {
     const rentalWithUrls = addImageUrlsToRental(updatedRental, req);
     res.json(rentalWithUrls);
   } catch (error) {
-    console.error("Error updating rental:", error);
-
-    if (error instanceof SyntaxError) {
-      return res.status(400).json({
-        message: "Invalid JSON format",
-        details: "One or more JSON fields are not properly formatted",
-      });
-    }
-
-    if (
-      error &&
-      typeof error === "object" &&
-      "name" in error &&
-      error.name === "ValidationError" &&
-      "errors" in error
-    ) {
-      const validationErrors = Object.values(
-        (error as { errors: Record<string, { message: string }> }).errors
-      ).map((err) => err.message);
-      return res.status(400).json({
-        message: "Validation error",
-        details: validationErrors,
-      });
-    }
-
     res.status(500).json({
       message: "Error updating rental",
       details:
@@ -1008,7 +906,6 @@ export const getRental = async (req: Request, res: Response) => {
     const rentalWithUrls = addImageUrlsToRental(rental, req);
     res.json(rentalWithUrls);
   } catch (error) {
-    console.error("Error fetching rental:", error);
     res.status(500).json({
       message: "Error fetching rental",
       details: "An unexpected error occurred while fetching the rental",
@@ -1019,28 +916,20 @@ export const getRental = async (req: Request, res: Response) => {
 // Get all rentals
 export const getAllRentals = async (req: Request, res: Response) => {
   try {
-    // Filtering and pagination logic can be added here later
-    const rentals = await Rental.find()
+    const rentals = await Rental.find({ isListed: true })
       .populate("renter", "name")
       .populate("category", "name");
 
-    // Use the helper for each rental to add image URLs and apply toObject/toJSON
     const rentalsWithUrls = rentals.map((rental) =>
       addImageUrlsToRental(rental, req)
     );
 
-    console.log(
-      "getAllRentals - First Raw Mongoose Document (if any):",
-      rentals[0]
-    );
-    console.log(
-      "getAllRentals - First After addImageUrlsToRental (if any):",
-      rentalsWithUrls[0]
-    );
-
     res.json(rentalsWithUrls);
   } catch (error: any) {
-    res.status(400).json({ message: error.message });
+    res.status(500).json({
+      message: "Error fetching rentals",
+      details: error.message,
+    });
   }
 };
 
@@ -1057,18 +946,8 @@ export const getRenterRentals = async (req: AuthRequest, res: Response) => {
       "name"
     );
 
-    // Use the helper for each rental to add image URLs and apply toObject/toJSON
     const rentalsWithUrls = rentals.map((rental) =>
       addImageUrlsToRental(rental, req)
-    );
-
-    console.log(
-      "getRenterRentals - First Raw Mongoose Document (if any):",
-      rentals[0]
-    );
-    console.log(
-      "getRenterRentals - First After addImageUrlsToRental (if any):",
-      rentalsWithUrls[0]
     );
 
     res.json(rentalsWithUrls);
@@ -1092,6 +971,14 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
 
     if (!rental) {
       return res.status(404).json({ message: "Rental not found" });
+    }
+
+    // Check if rental is listed
+    if (!rental.isListed) {
+      return res.status(400).json({
+        message: "Rental is not available for booking",
+        details: "This rental has been unlisted by the owner",
+      });
     }
 
     // Validate dates and times
@@ -1154,15 +1041,6 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
         return res.status(400).json({ message: timeSlotValidation.message });
       }
 
-      // Check if the rental is available for the specific time slot
-      const dateStr = bookingStartDate.toISOString().split("T")[0];
-      const slot = rental.availability[dateStr];
-      if (!slot || slot.availableSeats < 1) {
-        return res
-          .status(400)
-          .json({ message: `No availability for date: ${dateStr}` });
-      }
-
       // Calculate total price for hourly booking
       const totalPrice = totalHours * rental.pricing.hourlyRate;
 
@@ -1183,33 +1061,23 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
       });
 
       await booking.save();
-
-      // Update rental availability
-      rental.availability[dateStr].availableSeats -= 1;
-      await rental.save();
-
       res.status(201).json(booking);
     } else if (bookingType === "daily") {
       // Calculate total days
       const totalDays = calculateDays(bookingStartDate, bookingEndDate);
 
-      // Check availability for all days
-      const bookingDates: string[] = [];
-      let current = new Date(bookingStartDate);
-      while (current <= bookingEndDate) {
-        const dateStr = current.toISOString().split("T")[0];
-        bookingDates.push(dateStr);
-        current.setDate(current.getDate() + 1);
-      }
+      // Validate time slot availability
+      const timeSlotValidation = await validateTimeSlot(
+        rental._id,
+        bookingStartDate,
+        bookingEndDate,
+        startTime || "00:00",
+        endTime || "23:59",
+        "daily"
+      );
 
-      // Check if all dates are available
-      for (const date of bookingDates) {
-        const slot = rental.availability[date];
-        if (!slot || slot.availableSeats < 1) {
-          return res
-            .status(400)
-            .json({ message: `No availability for date: ${date}` });
-        }
+      if (!timeSlotValidation.isValid) {
+        return res.status(400).json({ message: timeSlotValidation.message });
       }
 
       // Calculate total price for daily booking
@@ -1230,13 +1098,6 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
       });
 
       await booking.save();
-
-      // Update rental availability for all days
-      for (const date of bookingDates) {
-        rental.availability[date].availableSeats -= 1;
-      }
-      await rental.save();
-
       res.status(201).json(booking);
     } else {
       return res.status(400).json({ message: "Invalid booking type" });
@@ -1366,7 +1227,6 @@ export const getAllBookings = async (req: AuthRequest, res: Response) => {
 
     res.json(formattedBookings);
   } catch (error: any) {
-    console.error("Error fetching all bookings:", error);
     res.status(500).json({
       message: "Error fetching bookings",
       details: error.message,
@@ -1496,7 +1356,6 @@ export const cancelBooking = async (req: AuthRequest, res: Response) => {
       booking,
     });
   } catch (error: any) {
-    console.error("Error cancelling booking:", error);
     res.status(400).json({
       message: "Error cancelling booking",
       details: error.message,
@@ -1571,7 +1430,6 @@ export const rateRental = async (req: AuthRequest, res: Response) => {
 
     res.json(addImageUrlsToRental(updatedRental, req));
   } catch (error: any) {
-    console.error("Error rating rental:", error);
     res.status(500).json({
       message: "Error rating rental",
       details: error.message,
@@ -1713,5 +1571,53 @@ export const confirmCardPayment = async (req: AuthRequest, res: Response) => {
     res.json(booking);
   } catch (error: any) {
     res.status(400).json({ message: error.message });
+  }
+};
+
+// Toggle rental listing status
+export const toggleRentalListing = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { isListed } = req.body;
+
+    if (typeof isListed !== "boolean") {
+      return res.status(400).json({
+        message: "Invalid request",
+        details: "isListed must be a boolean value",
+      });
+    }
+
+    const rental = await Rental.findById(id);
+
+    if (!rental) {
+      return res.status(404).json({
+        message: "Rental not found",
+        details: "No rental exists with the provided ID",
+      });
+    }
+
+    // Check if user is the renter or admin
+    const userId = req.user?.id?.toString();
+    const renterId = rental.renter.toString();
+
+    if (renterId !== userId && req.user?.role !== "admin") {
+      return res.status(403).json({
+        message: "Not authorized",
+        details: "Only the rental owner or admin can update listing status",
+      });
+    }
+
+    rental.isListed = isListed;
+    await rental.save();
+
+    res.json({
+      message: `Rental ${isListed ? "listed" : "unlisted"} successfully`,
+      rental: addImageUrlsToRental(rental, req),
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      message: "Error updating rental listing status",
+      details: error.message,
+    });
   }
 };

@@ -8,13 +8,7 @@ export interface IRental {
   category: mongoose.Types.ObjectId;
   location: string;
   features: string[];
-  availability: {
-    [date: string]: {
-      totalSeats: number;
-      availableSeats: number;
-      price: number;
-    };
-  };
+  totalSeats: number;
   rentalType: "car" | "bike" | "equipment";
   image?: mongoose.Types.ObjectId;
   images?: mongoose.Types.ObjectId[];
@@ -25,6 +19,7 @@ export interface IRental {
     review: string;
   }[];
   averageRating: number;
+  isListed: boolean;
   // Car-specific fields
   make: string;
   model: string;
@@ -115,10 +110,10 @@ const rentalSchema = new Schema<IRental>(
         required: true,
       },
     ],
-    availability: {
-      type: Schema.Types.Mixed,
+    totalSeats: {
+      type: Number,
       required: true,
-      default: {},
+      min: 1,
     },
     rentalType: {
       type: String,
@@ -161,6 +156,10 @@ const rentalSchema = new Schema<IRental>(
       default: 0,
       min: 0,
       max: 5,
+    },
+    isListed: {
+      type: Boolean,
+      default: true,
     },
     make: {
       type: String,
@@ -258,19 +257,23 @@ const rentalSchema = new Schema<IRental>(
       dailyRate: {
         type: Number,
         required: true,
+        min: 0,
       },
       hourlyRate: {
         type: Number,
         required: true,
+        min: 0,
       },
       minimumHours: {
         type: Number,
         required: true,
+        min: 1,
         default: 4,
       },
       securityDeposit: {
         type: Number,
         required: true,
+        min: 0,
       },
       cancellationPolicy: {
         type: String,

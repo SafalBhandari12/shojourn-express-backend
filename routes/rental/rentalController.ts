@@ -304,15 +304,23 @@ export const createRental = async (req: AuthRequest, res: Response) => {
       price,
       category,
       location,
-      features: Array.isArray(features) ? features : [features],
+      features: Array.isArray(features)
+        ? features.map((f) =>
+            typeof f === "string"
+              ? f.replace(/^["\[]|["\]]$/g, "").replace(/^"|"$/g, "")
+              : f
+          )
+        : typeof features === "string"
+        ? JSON.parse(features.replace(/^["\[]|["\]]$/g, ""))
+        : [features],
       rentalType,
       specifications,
       availability,
       insurance,
       pricing,
       locationDetails,
-      image: mainImageId, // Set the main image
-      images: additionalImageIds, // Set additional images
+      image: mainImageId,
+      images: additionalImageIds,
       documents: documentIds,
       licensePlate,
       color,
@@ -389,7 +397,15 @@ export const updateRental = async (req: AuthRequest, res: Response) => {
 
     // Parse JSON strings if they exist
     const features = req.body.features
-      ? JSON.parse(req.body.features)
+      ? typeof req.body.features === "string"
+        ? JSON.parse(req.body.features.replace(/^["\[]|["\]]$/g, ""))
+        : Array.isArray(req.body.features)
+        ? req.body.features.map((f) =>
+            typeof f === "string"
+              ? f.replace(/^["\[]|["\]]$/g, "").replace(/^"|"$/g, "")
+              : f
+          )
+        : req.body.features
       : undefined;
     const specifications = req.body.specifications
       ? JSON.parse(req.body.specifications)
@@ -555,8 +571,27 @@ export const getRental = async (req: Request, res: Response) => {
       });
     }
 
+    // Get all non-cancelled bookings for this rental
+    const bookings = await RentalBooking.find({
+      rental: rental._id,
+      status: { $ne: "cancelled" },
+    }).select("startDate endDate startTime endTime bookingType");
+
     const rentalWithUrls = addImageUrlsToRental(rental, req);
-    res.json(rentalWithUrls);
+
+    // Add booked dates to the response
+    const response = {
+      ...rentalWithUrls,
+      bookedDates: bookings.map((booking) => ({
+        startDate: booking.startDate,
+        endDate: booking.endDate,
+        startTime: booking.startTime,
+        endTime: booking.endTime,
+        bookingType: booking.bookingType,
+      })),
+    };
+
+    res.json(response);
   } catch (error) {
     res.status(500).json({
       message: "Error fetching rental",

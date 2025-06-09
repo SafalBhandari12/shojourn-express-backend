@@ -53,14 +53,6 @@ const documentFileFilter = (
 export const rentalUpload = multer({
   storage,
   fileFilter: (req, file, cb) => {
-    // Log the incoming field name and mimetype for debugging
-    console.log(
-      "Processing field:",
-      file.fieldname,
-      "Mimetype:",
-      file.mimetype
-    );
-
     // Use different file filters based on the field name
     switch (file.fieldname) {
       case "image":
@@ -100,9 +92,6 @@ export const parseRentalFormDataFields = (
   next: NextFunction
 ) => {
   try {
-    // Log the request body for debugging
-    console.log("Request body fields:", Object.keys(req.body));
-
     // Handle features field - convert comma-separated string to array
     if (req.body.features) {
       if (typeof req.body.features === "string") {

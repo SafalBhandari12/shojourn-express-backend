@@ -203,502 +203,154 @@ export const createRental = async (req: AuthRequest, res: Response) => {
       category,
       location,
       features,
-      totalSeats,
       rentalType,
-      make,
-      model,
-      year,
-      transmission,
-      fuelType,
-      mileage,
-      seats,
-      doors,
-      color,
-      licensePlate,
-      insurance,
       specifications,
+      availability,
+      insurance,
       pricing,
       locationDetails,
+      licensePlate,
+      color,
+      doors,
+      seats,
+      mileage,
+      fuelType,
+      transmission,
+      year,
+      model,
+      make,
+      totalSeats,
     } = req.body;
 
-    // Validate all required fields
-    const requiredFields = [
-      "title",
-      "description",
-      "price",
-      "category",
-      "location",
-      "features",
-      "totalSeats",
-      "rentalType",
-      "make",
-      "model",
-      "year",
-      "transmission",
-      "fuelType",
-      "mileage",
-      "seats",
-      "doors",
-      "color",
-      "licensePlate",
-      "insurance",
-      "pricing",
-      "locationDetails",
-    ];
-
-    const missingFields = requiredFields.filter((field) => !req.body[field]);
-    if (missingFields.length > 0) {
+    // Validate required fields
+    if (!title || !description || !price || !category || !location) {
       return res.status(400).json({
         message: "Missing required fields",
-        details: missingFields.map((field) => `${field} is required`),
+        details:
+          "Title, description, price, category, and location are required",
       });
     }
 
-    // Validate required document files
+    // Validate files
     if (!req.files) {
       return res.status(400).json({
-        message: "Missing required files",
-        details: "Please upload all required documents and images",
+        message: "No files uploaded",
+        details: "At least one image is required",
       });
     }
 
-    // Get the files from req.files
-    const files = req.files as { [key: string]: Express.Multer.File[] };
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
 
-    // Check for required files
-    const requiredFiles = ["image", "registration", "insurance", "inspection"];
-    const missingFiles = requiredFiles.filter(
-      (file) => !files[file] || files[file].length === 0
+    // Validate main image
+    if (!files.image || files.image.length === 0) {
+      return res.status(400).json({
+        message: "Main image is required",
+        details: "Please upload a main image for the rental",
+      });
+    }
+
+    // Upload main image
+    const mainImageId = await uploadToGridFS(
+      files.image[0].buffer,
+      files.image[0].originalname,
+      files.image[0].mimetype
     );
 
-    if (missingFiles.length > 0) {
-      return res.status(400).json({
-        message: "Missing required files",
-        details: `The following files are required: ${missingFiles.join(", ")}`,
-      });
-    }
-
-    // Validate document file types
-    const allowedDocumentTypes = [
-      "application/pdf",
-      "application/msword",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "image/jpeg",
-      "image/png",
-      "image/jpg",
-    ];
-
-    // Get the document files
-    const documentFiles = {
-      registration: files.registration[0],
-      insurance: files.insurance[0],
-      inspection: files.inspection[0],
-    };
-
-    // Validate file types and sizes
-    for (const [docType, file] of Object.entries(documentFiles)) {
-      // Check file type
-      if (!allowedDocumentTypes.includes(file.mimetype)) {
-        return res.status(400).json({
-          message: "Invalid file type",
-          details: `${docType} must be a PDF, DOC, DOCX, or image file (JPEG, PNG). Received: ${file.mimetype}`,
-        });
-      }
-
-      // Check file size (max 10MB)
-      const maxSize = 10 * 1024 * 1024; // 10MB in bytes
-      if (file.size > maxSize) {
-        return res.status(400).json({
-          message: "File too large",
-          details: `${docType} file size must be less than 10MB. Current size: ${(
-            file.size /
-            (1024 * 1024)
-          ).toFixed(2)}MB`,
-        });
-      }
-    }
-
-    // Validate title
-    if (typeof title !== "string" || title.trim().length < 3) {
-      return res.status(400).json({
-        message: "Invalid title",
-        details: "Title must be at least 3 characters long",
-      });
-    }
-
-    // Validate description
-    if (typeof description !== "string" || description.trim().length < 10) {
-      return res.status(400).json({
-        message: "Invalid description",
-        details: "Description must be at least 10 characters long",
-      });
-    }
-
-    // Validate price
-    if (isNaN(Number(price)) || Number(price) <= 0) {
-      return res.status(400).json({
-        message: "Invalid price",
-        details: "Price must be a positive number",
-      });
-    }
-
-    // Validate category
-    if (!mongoose.Types.ObjectId.isValid(category)) {
-      return res.status(400).json({
-        message: "Invalid category",
-        details: "Category must be a valid ID",
-      });
-    }
-
-    // Validate location
-    if (typeof location !== "string" || location.trim().length < 3) {
-      return res.status(400).json({
-        message: "Invalid location",
-        details: "Location must be at least 3 characters long",
-      });
-    }
-
-    // Validate rentalType
-    const validRentalTypes = ["car", "bike", "equipment"];
-    if (!validRentalTypes.includes(rentalType)) {
-      return res.status(400).json({
-        message: "Invalid rental type",
-        details: `Rental type must be one of: ${validRentalTypes.join(", ")}`,
-      });
-    }
-
-    // Parse and validate features
-    let parsedFeatures: string[];
-    try {
-      parsedFeatures = JSON.parse(features);
-      if (!Array.isArray(parsedFeatures) || parsedFeatures.length === 0) {
-        throw new Error("Features must be a non-empty array");
-      }
-      // Validate each feature
-      for (const feature of parsedFeatures) {
-        if (typeof feature !== "string" || feature.trim().length === 0) {
-          throw new Error("Each feature must be a non-empty string");
-        }
-      }
-    } catch (error) {
-      return res.status(400).json({
-        message: "Invalid features format",
-        details:
-          error instanceof Error
-            ? error.message
-            : "Features must be a valid JSON array of non-empty strings",
-      });
-    }
-
-    // Validate totalSeats
-    if (
-      isNaN(Number(totalSeats)) ||
-      Number(totalSeats) < 1 ||
-      Number(totalSeats) > 10
-    ) {
-      return res.status(400).json({
-        message: "Invalid total seats",
-        details: "Total seats must be between 1 and 10",
-      });
-    }
-
-    // Handle image uploads
-    let imageId: ObjectId | null = null;
-    let multipleImageIds: ObjectId[] = [];
-
-    try {
-      // Handle main image
-      const mainImage = req.files["image"][0];
-      imageId = await uploadToGridFS(
-        mainImage.buffer,
-        mainImage.originalname,
-        mainImage.mimetype
-      );
-
-      // Handle additional images
-      if (
-        req.files["multipleImages"] &&
-        req.files["multipleImages"].length > 0
-      ) {
-        if (req.files["multipleImages"].length > 5) {
-          return res.status(400).json({
-            message: "Too many images",
-            details: "Maximum 5 additional images allowed",
-          });
-        }
-        for (const file of req.files["multipleImages"]) {
-          const id = await uploadToGridFS(
+    // Upload additional images
+    const additionalImageIds: mongoose.Types.ObjectId[] = [];
+    if (files.multipleImages && files.multipleImages.length > 0) {
+      for (const file of files.multipleImages) {
+        try {
+          const imageId = await uploadToGridFS(
             file.buffer,
             file.originalname,
             file.mimetype
           );
-          multipleImageIds.push(id);
+          additionalImageIds.push(imageId);
+        } catch (error) {
+          // Silently handle error
         }
       }
-    } catch (error) {
-      return res.status(400).json({
-        message: "Error uploading images",
-        details: "Failed to process image uploads",
-      });
     }
 
-    // Validate year
-    const currentYear = new Date().getFullYear();
-    if (
-      isNaN(Number(year)) ||
-      Number(year) < 1900 ||
-      Number(year) > currentYear + 1
-    ) {
-      return res.status(400).json({
-        message: "Invalid year",
-        details: `Year must be between 1900 and ${currentYear + 1}`,
-      });
-    }
-
-    // Validate mileage
-    if (isNaN(Number(mileage)) || Number(mileage) < 0) {
-      return res.status(400).json({
-        message: "Invalid mileage",
-        details: "Mileage must be a positive number",
-      });
-    }
-
-    // Validate seats and doors
-    if (isNaN(Number(seats)) || Number(seats) < 1 || Number(seats) > 10) {
-      return res.status(400).json({
-        message: "Invalid seats",
-        details: "Seats must be between 1 and 10",
-      });
-    }
-
-    if (isNaN(Number(doors)) || Number(doors) < 2 || Number(doors) > 5) {
-      return res.status(400).json({
-        message: "Invalid doors",
-        details: "Doors must be between 2 and 5",
-      });
-    }
-
-    // Validate insurance
-    let parsedInsurance: {
-      provider: string;
-      policyNumber: string;
-      expiryDate: string;
-    };
-    try {
-      if (typeof insurance === "string") {
-        parsedInsurance = JSON.parse(insurance);
-      } else {
-        parsedInsurance = insurance;
-      }
-      if (
-        !parsedInsurance.provider ||
-        !parsedInsurance.policyNumber ||
-        !parsedInsurance.expiryDate
-      ) {
-        throw new Error("Missing required insurance fields");
-      }
-      const expiryDate = new Date(parsedInsurance.expiryDate);
-      if (isNaN(expiryDate.getTime())) {
-        throw new Error("Invalid insurance expiry date");
-      }
-    } catch (error) {
-      return res.status(400).json({
-        message: "Invalid insurance format",
-        details:
-          error instanceof Error
-            ? error.message
-            : "Insurance must be a valid JSON object with provider, policyNumber, and expiryDate",
-      });
-    }
-
-    // Validate specifications (optional)
-    let parsedSpecifications: any = undefined;
-    if (specifications) {
-      try {
-        if (typeof specifications === "string") {
-          parsedSpecifications = JSON.parse(specifications);
-        } else {
-          parsedSpecifications = specifications;
-        }
-        if (parsedSpecifications) {
-          if (
-            parsedSpecifications.safetyFeatures &&
-            !Array.isArray(parsedSpecifications.safetyFeatures)
-          ) {
-            throw new Error("Safety features must be an array");
-          }
-        }
-      } catch (error) {
-        return res.status(400).json({
-          message: "Invalid specifications format",
-          details:
-            error instanceof Error
-              ? error.message
-              : "Specifications must be a valid JSON object",
-        });
-      }
-    }
-
-    // Validate pricing
-    let parsedPricing: any;
-    try {
-      if (typeof pricing === "string") {
-        parsedPricing = JSON.parse(pricing);
-      } else {
-        parsedPricing = pricing;
-      }
-      const requiredPricing = [
-        "dailyRate",
-        "securityDeposit",
-        "cancellationPolicy",
-      ];
-      const missingPricing = requiredPricing.filter(
-        (price) => !parsedPricing[price]
+    // Upload documents if provided
+    const documentIds: { [key: string]: mongoose.Types.ObjectId } = {};
+    if (files.registration && files.registration.length > 0) {
+      documentIds.registration = await uploadToGridFS(
+        files.registration[0].buffer,
+        files.registration[0].originalname,
+        files.registration[0].mimetype
       );
-      if (missingPricing.length > 0) {
-        throw new Error(
-          `Missing required pricing fields: ${missingPricing.join(", ")}`
-        );
-      }
-    } catch (error) {
-      return res.status(400).json({
-        message: "Invalid pricing format",
-        details:
-          error instanceof Error
-            ? error.message
-            : "Pricing must be a valid JSON object with dailyRate, securityDeposit, and cancellationPolicy",
-      });
+    }
+    if (files.insurance && files.insurance.length > 0) {
+      documentIds.insurance = await uploadToGridFS(
+        files.insurance[0].buffer,
+        files.insurance[0].originalname,
+        files.insurance[0].mimetype
+      );
+    }
+    if (files.inspection && files.inspection.length > 0) {
+      documentIds.inspection = await uploadToGridFS(
+        files.inspection[0].buffer,
+        files.inspection[0].originalname,
+        files.inspection[0].mimetype
+      );
     }
 
-    // Validate location details
-    let parsedLocationDetails: any;
-    try {
-      if (typeof locationDetails === "string") {
-        parsedLocationDetails = JSON.parse(locationDetails);
-      } else {
-        parsedLocationDetails = locationDetails;
-      }
-      if (
-        !parsedLocationDetails.address ||
-        !parsedLocationDetails.coordinates
-      ) {
-        throw new Error("Missing required location details");
-      }
-      if (
-        !parsedLocationDetails.coordinates.latitude ||
-        !parsedLocationDetails.coordinates.longitude
-      ) {
-        throw new Error("Missing coordinates");
-      }
-      const lat = Number(parsedLocationDetails.coordinates.latitude);
-      const lng = Number(parsedLocationDetails.coordinates.longitude);
-      if (
-        isNaN(lat) ||
-        isNaN(lng) ||
-        lat < -90 ||
-        lat > 90 ||
-        lng < -180 ||
-        lng > 180
-      ) {
-        throw new Error("Invalid coordinates");
-      }
-    } catch (error) {
-      return res.status(400).json({
-        message: "Invalid location details format",
-        details:
-          error instanceof Error
-            ? error.message
-            : "Location details must be a valid JSON object with address and coordinates",
-      });
-    }
-
-    // Handle document uploads
-    let documentIds: {
-      registration: mongoose.Types.ObjectId;
-      insurance: mongoose.Types.ObjectId;
-      inspection: mongoose.Types.ObjectId;
-    };
-
-    try {
-      // Upload all documents first
-      const [registrationId, insuranceId, inspectionId] = await Promise.all([
-        uploadToGridFS(
-          documentFiles.registration.buffer,
-          documentFiles.registration.originalname,
-          documentFiles.registration.mimetype
-        ),
-        uploadToGridFS(
-          documentFiles.insurance.buffer,
-          documentFiles.insurance.originalname,
-          documentFiles.insurance.mimetype
-        ),
-        uploadToGridFS(
-          documentFiles.inspection.buffer,
-          documentFiles.inspection.originalname,
-          documentFiles.inspection.mimetype
-        ),
-      ]);
-
-      // Assign the IDs after successful upload
-      documentIds = {
-        registration: registrationId,
-        insurance: insuranceId,
-        inspection: inspectionId,
-      };
-    } catch (error) {
-      // Handle specific upload errors
-      if (error instanceof Error) {
-        return res.status(400).json({
-          message: "Error uploading documents",
-          details: `Failed to process document uploads: ${error.message}`,
-        });
-      }
-      return res.status(400).json({
-        message: "Error uploading documents",
-        details: "Failed to process document uploads. Please try again.",
-      });
-    }
-
-    // Create rental with all fields
+    // Create rental object with all images
     const rental = new Rental({
-      title: title.trim(),
-      description: description.trim(),
-      price: Number(price),
+      title,
+      description,
+      price,
       category,
-      location: location.trim(),
-      features: parsedFeatures,
-      totalSeats: Number(totalSeats),
+      location,
+      features: Array.isArray(features) ? features : [features],
       rentalType,
-      renter: new mongoose.Types.ObjectId(req.user?.id),
-      image: imageId,
-      images: multipleImageIds,
-      make: make.trim(),
-      model: model.trim(),
-      year: Number(year),
-      transmission,
-      fuelType,
-      mileage: Number(mileage),
-      seats: Number(seats),
-      doors: Number(doors),
-      color: color.trim(),
-      licensePlate: licensePlate.trim(),
-      insurance: parsedInsurance,
+      specifications,
+      availability,
+      insurance,
+      pricing,
+      locationDetails,
+      image: mainImageId, // Set the main image
+      images: additionalImageIds, // Set additional images
       documents: documentIds,
-      specifications: parsedSpecifications,
-      pricing: parsedPricing,
-      locationDetails: parsedLocationDetails,
-      status: "available",
-      isListed: true,
+      licensePlate,
+      color,
+      doors,
+      seats,
+      mileage,
+      fuelType,
+      transmission,
+      year,
+      model,
+      make,
+      renter: req.user?.id,
+      totalSeats,
     });
 
+    // Save rental
     await rental.save();
 
-    res.status(201).json(addImageUrlsToRental(rental, req));
-  } catch (error: any) {
+    // Get full URLs for all images
+    const mainImageUrl = getFullImageUrl(req, mainImageId.toString());
+    const additionalImageUrls = await Promise.all(
+      additionalImageIds.map((imageId) =>
+        getFullImageUrl(req, imageId.toString())
+      )
+    );
+
+    // Create response object with all image URLs
+    const response = {
+      ...rental.toObject(),
+      imageUrl: mainImageUrl,
+      multipleImageUrls: additionalImageUrls,
+    };
+
+    res.status(201).json(response);
+  } catch (error) {
     res.status(500).json({
       message: "Error creating rental",
-      details: error.message || "An unexpected error occurred",
-      stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
+      details: error instanceof Error ? error.message : "Unknown error",
     });
   }
 };
